@@ -1,0 +1,118 @@
+import streamlit as st
+import pandas as pd
+import datetime
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+# --- 1. CLOUD DATABASE CONNECTION ---
+# Streamlit Cloud handles the database storage automatically using this line
+conn = st.connection('sqlite_db', type='sql', url='sqlite:///office_schedule.db')
+
+ROOMS = ["Executive Boardroom", "Meeting Room A", "Discussion Room C"]
+TIME_SLOTS = [
+    "08:00 AM - 09:00 AM", "09:00 AM - 10:00 AM", "10:00 AM - 11:00 AM",
+    "11:00 AM - 12:00 PM", "12:00 PM - 01:00 PM", "01:00 PM - 02:00 PM",
+    "02:00 PM - 03:00 PM", "03:00 PM - 04:00 PM", "04:00 PM - 05:00 PM"
+]
+
+# --- 2. EMAIL AUTOMATION FUNCTION ---
+def send_email_broadcast(room, organizer, date, slot):
+    # Retrieve secure credentials set up in Streamlit Cloud Settings
+    sender_email = st.secrets["EMAIL_USER"]
+    sender_password = st.secrets["EMAIL_PASSWORD"]
+    recipient_group = st.secrets["ALL_STAFF_EMAIL"]
+    
+    msg = MIMEMultipart()
+    msg['From'] = sender_email
+    msg['To'] = recipient_group
+    msg['Subject'] = f"📢 ROOM RESERVED: {room}"
+    
+    html = f"""
+    <html>
+      <body style="font-family: Arial, sans-serif; color: #333;">
+        <h2 style="color: #0078D4;">🏢 Meeting Room Booking Alert</h2>
+        <p>A new reservation has been logged into the system:</p>
+        <table style="border-collapse: collapse; width: 100%; max-width: 450px; border: 1px solid #ddd;">
+          <tr style="background-color: #f2f2f2;"><td style="padding: 8px; font-weight: bold;">Room:</td><td style="padding: 8px;">{room}</td></tr>
+          <tr><td style="padding: 8px; font-weight: bold;">Reserved By:</td><td style="padding: 8px;">{organizer}</td></tr>
+          <tr style="background-color: #f2f2f2;"><td style="padding: 8px; font-weight: bold;">Date:</td><td style="padding: 8px;">{date}</td></tr>
+          <tr><td style="padding: 8px; font-weight: bold;">Time Slot:</td><td style="padding: 8px;">{slot}</td></tr>
+        </table>
+        <p style="font-size: 11px; color: #888; margin-top: 15px;">*Automated system notification.*</p>
+      </body>
+    </html>
+    """
+    msg.attach(MIMEText(html, 'html'))
+    
+    try:
+        # Standard Outlook/Office365 Outgoing SMTP Server Settings
+        server = smtplib.SMTP("smtp.office365.com", 587)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        server.sendmail(sender_email, recipient_group, msg.as_string())
+        server.quit()
+    except Exception as e:
+        st.sidebar.error(f"Email system failed to broadcast: {e}")
+
+# --- 3. DASHBOARD INTERFACE ---
+st.set_page_config(layout="wide")
+st.title("🏢 Smart Office Booking Hub")
+
+selected_date = st.date_input("📅 Select Target Date:", datetime.date.today())
+selected_date_str = str(selected_date)
+
+left_col, right_col = st.columns([1, 2])
+
+with left_col:
+    st.subheader("🔒 Reserve a Slot")
+    with st.form("booking_form", clear_on_submit=True):
+        chosen_room = st.selectbox("Select Room", ROOMS)
+        user_name = st.text_input("Your Name / Dept")
+        chosen_slot = st.selectbox("Select Time", TIME_SLOTS)
+        submit_btn = st.form_submit_button("Confirm Booking")
+        
+    if submit_btn and user_name:
+        with conn.session as session:
+            # Check SQL database for double booking
+            res = session.execute(
+                "SELECT * FROM reservations WHERE room_name=:r AND booking_date=:d AND time_slot=:s",
+                {"r": chosen_room, "d": selected_date_str, "s": chosen_slot}
+            ).fetchone()
+            
+            if res:
+                st.error("❌ Slot already taken!")
+            else:
+                # Insert into SQL table
+                session.execute(
+                    "INSERT INTO reservations (room_name, reserved_by, booking_date, time_slot) VALUES (:r, :n, :d, :s)",
+                    {"r": chosen_room, "n": user_name, "d": selected_date_str, "s": chosen_slot}
+                )
+                session.commit()
+                st.success("🎉 Registered!")
+                
+                # Run background email broadcast
+                send_email_broadcast(chosen_room, user_name, selected_date_str, chosen_slot)
+                st.rerun()
+
+with right_col:
+    st.subheader(f"📊 Live Matrix ({selected_date_str})")
+    # Read existing records from database
+    try:
+        df_db = conn.query(f"SELECT room_name, time_slot, reserved_by FROM reservations WHERE booking_date = '{selected_date_str}'")
+    except:
+        # Create an empty table if database is brand new
+        with conn.session as session:
+            session.execute("CREATE TABLE IF NOT EXISTS reservations (id INTEGER PRIMARY KEY AUTOINCREMENT, room_name TEXT, reserved_by TEXT, booking_date TEXT, time_slot TEXT)")
+            session.commit()
+        df_db = pd.DataFrame(columns=['room_name', 'time_slot', 'reserved_by'])
+
+    matrix_data = []
+    for room in ROOMS:
+        room_row = {"Room": room}
+        for slot in TIME_SLOTS:
+            match = df_db[(df_db['room_name'] == room) & (df_db['time_slot'] == slot)]
+            room_row[slot] = f"🔴 {match.iloc[0]['reserved_by']}" if not match.empty else "🟢 Available"
+        matrix_data.append(room_row)
+        
+    st.dataframe(pd.DataFrame(matrix_data), use_container_width=True, hide_index=True)
