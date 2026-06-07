@@ -10,7 +10,7 @@ st.title("🏢 Smart Office Booking Hub")
 st.write("Welcome to the office room booking system. Select your slot below to reserve a room.")
 
 # 1. Room Configuration (Using Radio Buttons instead of dropdown)
-rooms = ["Meeting Room A", "Meeting Room B", "Discussion Room 1"]
+rooms = ["Meeting Room"]
 selected_room = st.radio("Choose a Room:", rooms)
 
 # 2. Date & Time Picker
