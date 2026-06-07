@@ -12,7 +12,7 @@ st.title("🏢 Smart Office Booking Hub")
 st.write("Welcome to the office room booking system. Select your slot below.")
 
 # Room configuration
-selected_room = "Meeting Room A"
+selected_room = "Meeting Room"
 st.subheader(f"🏢 Room: {selected_room}")
 
 # Date & Time picker
