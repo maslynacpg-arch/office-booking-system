@@ -1,3 +1,34 @@
+import streamlit as st
+import pandas as pd
+from datetime import datetime
+import smtplib
+from email.mime.text import MIMEText
+
+st.set_page_config(page_title="Office Booking Hub", layout="wide")
+st.title("🏢 Smart Office Booking Hub")
+
+st.write("Welcome to the office room booking system. Select your slot below to reserve a room.")
+
+# 1. Room Configuration
+rooms = ["Meeting Room A", "Meeting Room B", "Discussion Room 1"]
+selected_room = st.radio("Choose a Room:", rooms)
+
+# 2. Date & Time Picker
+date = st.date_input("Select Date:", datetime.today())
+time_slots = [
+    "09:00 AM - 10:00 AM", 
+    "10:00 AM - 11:00 AM", 
+    "11:00 AM - 12:00 PM", 
+    "02:00 PM - 03:00 PM", 
+    "03:00 PM - 04:00 PM", 
+    "04:00 PM - 05:00 PM"
+]
+selected_time = st.selectbox("Select Time Slot:", time_slots)
+
+# 3. User Info & Meeting Purpose
+name = st.text_input("Your Name:")
+meeting_purpose = st.text_input("Meeting Purpose / Topic:", placeholder="e.g., Operation Meeting, Financial Review")
+
 # 4. Booking Action & Email Blast Logic
 if st.button("Confirm Booking", type="primary"):
     if name and meeting_purpose:
@@ -33,7 +64,7 @@ if st.button("Confirm Booking", type="primary"):
             st.success(f"🎉 Booking confirmed! Email alert for '{meeting_purpose}' sent to all staff.")
             
         except Exception as e:
-            # THIS WILL NOW SHOW THE REAL SYSTEM ERROR MESSAGE ON SCREEN
+            # Show the real system error message directly on the screen
             st.success(f"🎉 Booking recorded for {name}! (Email failed because: {str(e)}).")
     else:
         st.warning("Please fill in both your Name and the Meeting Purpose before confirming.")
