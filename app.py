@@ -12,8 +12,8 @@ st.title("🏢 Smart Office Booking Hub")
 st.write("Welcome to the office room booking system. Select your slot below.")
 
 # Room configuration
-rooms = ["Meeting Room A", "Meeting Room B", "Discussion Room 1"]
-selected_room = st.radio("Choose a Room:", rooms)
+selected_room = "Meeting Room A"
+st.subheader(f"🏢 Room: {selected_room}")
 
 # Date & Time picker
 date = st.date_input("Select Date:", datetime.today())
