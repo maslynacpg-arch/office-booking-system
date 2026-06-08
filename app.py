@@ -1,6 +1,6 @@
-=import streamlit as st
+import streamlit as st
 import pandas as pd
-from datetime import datetime, time as datetime_time
+from datetime import datetime
 import time
 import smtplib
 from email.mime.text import MIMEText
@@ -71,7 +71,7 @@ for hour in range(8, 19):
 tab1, tab2 = st.tabs(["📝 Reserve a Room", "❌ Cancel a Booking"])
 
 # ==========================================
-# TAB 1: VISUAL BOOKING SYSTEM (FLEXIBLE TIME)
+# TAB 1: VISUAL BOOKING SYSTEM
 # ==========================================
 with tab1:
     st.subheader("Visual Schedule Planner")
@@ -79,7 +79,6 @@ with tab1:
     date_str = selected_date.strftime("%Y-%m-%d")
     
     st.markdown("### 📅 Live Confirmed Bookings for Today")
-    # Filter and display current active schedules for the day so users can check conflicts visually
     if not df_bookings.empty and "Status" in df_bookings.columns:
         today_active = df_bookings[
             (df_bookings["Date"] == date_str) & 
@@ -98,9 +97,9 @@ with tab1:
     
     col1, col2 = st.columns(2)
     with col1:
-        start_time = st.selectbox("Select Start Time:", time_options, index=2) # Defaults to 09:00 AM
+        start_time = st.selectbox("Select Start Time:", time_options, index=2)
     with col2:
-        end_time = st.selectbox("Select End Time:", time_options, index=4)     # Defaults to 10:00 AM
+        end_time = st.selectbox("Select End Time:", time_options, index=4)
 
     custom_time_slot = f"{start_time} - {end_time}"
     name = st.text_input("Your Name:", key="book_name")
@@ -108,7 +107,6 @@ with tab1:
 
     if st.button("Confirm Reservation Securely", type="primary"):
         if name and meeting_purpose:
-            # Simple check to ensure start is before end
             start_idx = time_options.index(start_time)
             end_idx = time_options.index(end_time)
             
@@ -126,8 +124,24 @@ with tab1:
                 response = requests.post(st.secrets["SCRIPT_URL"], data=json.dumps(payload))
                 
                 if response.status_code == 200:
-                    st.success(f"🎉 Booking recorded successfully for {custom_time_slot}!")
-                    send_email_alert(f"🏢 Confirmed: {selected_room}", f"Details:\n\n👤 Name: {name}\n📅 Date: {date_str}\n⏰ Time: {custom_time_slot}\n📝 Purpose: {meeting_purpose}")
+                    st.success(f"🎉 Booking recorded successfully!")
+                    
+                    # Custom Email Formatting with Intro & Disclaimer Footers
+                    email_subject = f"📢 Workspace Secured: {selected_room} ({date_str})"
+                    email_body = (
+                        f"Dear Team,\n\n"
+                        f"Please note that the following workspace has been secured for an upcoming session.\n\n"
+                        f"📋 Reservation Details:\n"
+                        f"📍 Workspace: {selected_room}\n"
+                        f"👤 Reserved By: {name}\n"
+                        f"📅 Session Date: {date_str}\n"
+                        f"⏰ Time Window: {custom_time_slot}\n"
+                        f"📝 Session Agenda: {meeting_purpose}\n\n"
+                        f"---\n"
+                        f"This is a system-generated notification. Please do not reply directly to this email."
+                    )
+                    send_email_alert(email_subject, email_body)
+                    
                     st.balloons()
                     time.sleep(2)
                     st.rerun()
@@ -158,4 +172,53 @@ with tab2:
                     
                     cancel_payload = {
                         "Action": "Cancel",
-                        "Date": c
+                        "Date": c_date,
+                        "Time_Slot": c_slot,
+                        "Room": c_room
+                    }
+                    
+                    response = requests.post(st.secrets["SCRIPT_URL"], data=json.dumps(cancel_payload))
+                    
+                    if response.status_code == 200:
+                        st.success("🎉 Cancellation fully processed!")
+                        
+                        # Cancellation Email Layout with Footer Disclaimer
+                        email_subject = f"❌ Workspace Released: {c_room} ({c_date})"
+                        email_body = (
+                            f"Dear Team,\n\n"
+                            f"Please note that the workspace allocation below has been released and is now open for new reservations.\n\n"
+                            f"🗑️ Released Reservation Details:\n"
+                            f"📍 Workspace: {c_room}\n"
+                            f"👤 Original Booker: {c_name}\n"
+                            f"📅 Date Affected: {c_date}\n"
+                            f"⏰ Released Slot: {c_slot}\n"
+                            f"⚠️ Cancellation Reason: {cancel_reason}\n\n"
+                            f"---\n"
+                            f"This is a system-generated notification. Please do not reply directly to this email."
+                        )
+                        send_email_alert(email_subject, email_body)
+                        
+                        time.sleep(1.5)
+                        st.rerun()
+                    else:
+                        st.error("Failed to connect to Google Sheet database for cancellation processing.")
+                else:
+                    st.warning("Please type a reason for the cancellation.")
+        else:
+            st.info("There are no active bookings to track right now.")
+    else:
+        st.info("There are no active bookings to track right now.")
+
+# ==========================================
+# 6. LIVE REFRESHED DASHBOARD FEED
+# ==========================================
+st.markdown("---")
+st.subheader("📋 Active Schedule Table Feed (All Dates)")
+if not df_bookings.empty and "Status" in df_bookings.columns:
+    display_board = df_bookings[df_bookings["Status"].str.lower() == "confirmed"]
+    if not display_board.empty:
+        st.dataframe(display_board.sort_values(by=["Date", "Time Slot"])[["Date", "Time Slot", "Room", "Booked By", "Purpose"]], use_container_width=True, hide_index=True)
+    else:
+        st.info("No active reservations booked at the moment.")
+else:
+    st.info("System database is empty.")
