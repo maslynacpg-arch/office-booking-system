@@ -131,7 +131,7 @@ with tab1:
                         conn.update(spreadsheet=st.secrets["GSHEET_URL"], data=updated_df)
                     
                     email_subject = f"🚨 New Booking: {selected_room} ({meeting_purpose})"
-                    email_body = f"Hi Team,\n\nNew reservation recorded:\n\n👤 User: {name}\n🏢 Room: {selected_room}\n📅 Date: {date_str}\n⏰ Time: {selected_time}\n📝 Purpose: {meeting_purpose}"
+                    email_body = f"Hi Team,\n\nPlease note that the following workspace has been secured for an upcoming session:\n\n👤 User: {name}\n🏢 Room: {selected_room}\n📅 Date: {date_str}\n⏰ Time: {selected_time}\n📝 Purpose: {meeting_purpose}"
                     send_email_alert(email_subject, email_body)
                     
                     st.success("🎉 Booking successfully processed! Email alerts dispatched.")
