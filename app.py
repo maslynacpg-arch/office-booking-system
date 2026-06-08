@@ -5,44 +5,40 @@ import time
 import smtplib
 from email.mime.text import MIMEText
 
-# --- SMART FALLBACK FOR THE GSHEETS LIBRARY ---
-try:
-    from streamlit_gsheets import GSheetsConnection
-    HAS_GSHEETS = True
-except ModuleNotFoundError:
-    HAS_GSHEETS = False
-
 st.set_page_config(page_title="Office Booking Hub", layout="wide")
 st.title("🏢 Smart Office Booking Hub")
 
-# --- DATABASE CONNECTION FUNCTION WITH LIVE REFRESH ---
+# --- FORCED STABLE DATABASE READER & WRITER ---
 def get_booking_data():
     try:
-        if HAS_GSHEETS:
-            conn = st.connection("gsheets", type=GSheetsConnection)
-            # ttl=0 completely bypasses Streamlit internal caching
-            existing_data = conn.read(spreadsheet=st.secrets["GSHEET_URL"], ttl=0)
-            df = pd.DataFrame(existing_data)
-        else:
-            base_url = st.secrets["GSHEET_URL"].split("/edit")[0]
-            csv_url = f"{base_url}/export?format=csv&nocache={int(time.time())}"
-            df = pd.read_csv(csv_url)
-            
+        # We explicitly pass the URL and connection rules right here so it never defaults to a broken read-only state
+        from streamlit_gsheets import GSheetsConnection
+        conn = st.connection("gsheets", type=GSheetsConnection)
+        existing_data = conn.read(spreadsheet=st.secrets["GSHEET_URL"], ttl=0)
+        df = pd.DataFrame(existing_data)
+        
         if df.empty or len(df.columns) == 0:
             return pd.DataFrame(columns=["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status"])
         
-        # Rigorous text normalization to prevent hidden space matching bugs
+        # Clean up strings and spaces
         df.columns = df.columns.str.strip()
         for col in df.columns:
             df[col] = df[col].astype(str).str.strip()
-            
-        if "Status" not in df.columns:
-            df["Status"] = "Confirmed"
         return df
     except Exception:
-        return pd.DataFrame(columns=["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status"])
+        # Alternative direct engine if the wrapper connection breaks
+        try:
+            base_url = st.secrets["GSHEET_URL"].split("/edit")[0]
+            csv_url = f"{base_url}/export?format=csv&nocache={int(time.time())}"
+            df = pd.read_csv(csv_url)
+            df.columns = df.columns.str.strip()
+            for col in df.columns:
+                df[col] = df[col].astype(str).str.strip()
+            return df
+        except Exception:
+            return pd.DataFrame(columns=["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status"])
 
-# Load fresh live data on every page execution
+# Load live data
 df_bookings = get_booking_data()
 
 # Email Configuration from Secrets
@@ -89,8 +85,7 @@ with tab1:
     date_str = selected_date.strftime("%Y-%m-%d")
 
     booked_slots = []
-    if not df_bookings.empty:
-        # Strict validation: Stripping string wrappers and force casing matching lower-case variations
+    if not df_bookings.empty and "Status" in df_bookings.columns:
         active_bookings = df_bookings[
             (df_bookings["Room"].str.lower() == selected_room.lower()) & 
             (df_bookings["Date"] == date_str) & 
@@ -107,14 +102,16 @@ with tab1:
 
         if st.button("Confirm Booking", type="primary"):
             if name and meeting_purpose:
-                # Re-fetch database live inside button action block to ensure no race conditions
                 df_latest = get_booking_data()
-                double_check = df_latest[
-                    (df_latest["Room"].str.lower() == selected_room.lower()) & 
-                    (df_latest["Date"] == date_str) & 
-                    (df_latest["Time Slot"].str.lower() == selected_time.lower()) & 
-                    (df_latest["Status"].str.lower() == "confirmed")
-                ]
+                if not df_latest.empty and "Status" in df_latest.columns:
+                    double_check = df_latest[
+                        (df_latest["Room"].str.lower() == selected_room.lower()) & 
+                        (df_latest["Date"] == date_str) & 
+                        (df_latest["Time Slot"].str.lower() == selected_time.lower()) & 
+                        (df_latest["Status"].str.lower() == "confirmed")
+                    ]
+                else:
+                    double_check = pd.DataFrame()
                 
                 if not double_check.empty:
                     st.error("❌ Double Booking Blocked! This slot was just reserved by someone else.")
@@ -130,9 +127,10 @@ with tab1:
                     
                     updated_df = pd.concat([df_bookings, new_row], ignore_index=True)
                     
-                    if HAS_GSHEETS:
-                        conn = st.connection("gsheets", type=GSheetsConnection)
-                        conn.update(spreadsheet=st.secrets["GSHEET_URL"], data=updated_df)
+                    # Force update straight via GSheets Connection library parameters
+                    from streamlit_gsheets import GSheetsConnection
+                    conn = st.connection("gsheets", type=GSheetsConnection)
+                    conn.update(spreadsheet=st.secrets["GSHEET_URL"], data=updated_df)
                     
                     email_subject = f"🏢 Room Booking Confirmed: {selected_room}"
                     email_body = f"Hi Team,\n\nA new room reservation has been officially registered in the system:\n\n👤 Staff Name: {name}\n📍 Facility: {selected_room}\n📅 Date: {date_str}\n⏰ Duration: {selected_time}\n📝 Agenda: {meeting_purpose}\n\nPlease refer to the Live Schedule Board if you need to coordinate timings."
@@ -153,7 +151,7 @@ with tab1:
 with tab2:
     st.subheader("Cancel an Existing Reservation")
     
-    if not df_bookings.empty:
+    if not df_bookings.empty and "Status" in df_bookings.columns:
         active_list = df_bookings[df_bookings["Status"].str.lower() == "confirmed"]
     else:
         active_list = pd.DataFrame()
@@ -185,9 +183,9 @@ with tab2:
                 if "Display_Text" in df_bookings.columns:
                     df_bookings = df_bookings.drop(columns=["Display_Text"])
                     
-                if HAS_GSHEETS:
-                    conn = st.connection("gsheets", type=GSheetsConnection)
-                    conn.update(spreadsheet=st.secrets["GSHEET_URL"], data=df_bookings)
+                from streamlit_gsheets import GSheetsConnection
+                conn = st.connection("gsheets", type=GSheetsConnection)
+                conn.update(spreadsheet=st.secrets["GSHEET_URL"], data=df_bookings)
                 
                 email_subject = f"❌ Room Booking Cancelled: {c_room}"
                 email_body = f"Hi Team,\n\nThe following room reservation has been removed and is now available for booking:\n\n👤 Original Booker: {c_name}\n📍 Facility: {c_room}\n📅 Date: {c_date}\n⏰ Released Time: {c_slot}\n⚠️ Reason: {cancel_reason}"
@@ -206,7 +204,7 @@ with tab3:
     st.subheader("📅 Interactive Schedule Grid Matrix")
     st.write("Easily check what slots are taken across all dates and rooms below.")
     
-    if not df_bookings.empty:
+    if not df_bookings.empty and "Status" in df_bookings.columns:
         confirmed_records = df_bookings[df_bookings["Status"].str.lower() == "confirmed"]
         if not confirmed_records.empty:
             matrix_df = confirmed_records.pivot_table(
@@ -227,8 +225,12 @@ with tab3:
 # ==========================================
 st.markdown("---")
 st.subheader("📋 Active Schedule Table Feed")
-if not df_bookings.empty:
+if not df_bookings.empty and "Status" in df_bookings.columns:
     display_board = df_bookings[df_bookings["Status"].str.lower() == "confirmed"]
     if not display_board.empty:
         display_board = display_board.sort_values(by=["Date", "Time Slot"])
         st.dataframe(display_board[["Date", "Time Slot", "Room", "Booked By", "Purpose"]], use_container_width=True, hide_index=True)
+    else:
+        st.info("No active reservations booked at the moment.")
+else:
+    st.info("System database is empty.")
