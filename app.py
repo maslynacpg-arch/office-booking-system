@@ -231,4 +231,4 @@ if not df_bookings.empty:
     display_board = df_bookings[df_bookings["Status"].str.lower() == "confirmed"]
     if not display_board.empty:
         display_board = display_board.sort_values(by=["Date", "Time Slot"])
-        st.dataframe(display_board[["Date", "Time Slot", "Room", "Booked By", "Purpose"]
+        st.dataframe(display_board[["Date", "Time Slot", "Room", "Booked By", "Purpose"]], use_container_width=True, hide_index=True)
