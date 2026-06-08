@@ -23,7 +23,6 @@ def get_booking_data():
             existing_data = conn.read(spreadsheet=st.secrets["GSHEET_URL"], ttl=0)
             df = pd.DataFrame(existing_data)
         else:
-            # Fallback: Read directly via native pandas CSV reader if library fails
             base_url = st.secrets["GSHEET_URL"].split("/edit")[0]
             csv_url = f"{base_url}/export?format=csv"
             df = pd.read_csv(csv_url)
@@ -50,7 +49,7 @@ try:
     SENDER_PASSWORD = st.secrets["EMAIL_PASSWORD"]
     RECIPIENT_LIST = [email.strip() for email in st.secrets["ALL_STAFF_EMAIL"].split(",")]
 except KeyError:
-    st.error("❌ Secrets Error: Please make sure EMAIL_USER, EMAIL_PASSWORD, and ALL_STAFF_EMAIL are set up in your Streamlit Secrets.")
+    st.error("❌ Secrets Error: Please check your Streamlit Secrets keys configuration.")
     st.stop()
 
 def send_email_alert(subject, body):
@@ -114,7 +113,7 @@ with tab1:
                 ]
                 
                 if not double_check.empty:
-                    st.error("❌ Double Booking Blocked! Someone just reserved this slot a moment ago. Please refresh or pick another time.")
+                    st.error("❌ Double Booking Blocked! Someone just reserved this slot.")
                 else:
                     new_row = pd.DataFrame([{
                         "Date": date_str,
@@ -130,9 +129,6 @@ with tab1:
                     if HAS_GSHEETS:
                         conn = st.connection("gsheets", type=GSheetsConnection)
                         conn.update(spreadsheet=st.secrets["GSHEET_URL"], data=updated_df)
-                    else:
-                        # If driver isn't loaded yet, log it locally on screen for safety
-                        st.info("🔄 Syncing layout... View your confirmed entry below.")
                     
                     email_subject = f"🚨 New Booking: {selected_room} ({meeting_purpose})"
                     email_body = f"Hi Team,\n\nNew reservation recorded:\n\n👤 User: {name}\n🏢 Room: {selected_room}\n📅 Date: {date_str}\n⏰ Time: {selected_time}\n📝 Purpose: {meeting_purpose}"
@@ -145,7 +141,7 @@ with tab1:
             else:
                 st.warning("Please provide your name and meeting purpose.")
     else:
-        st.error("❌ This room is entirely fully booked for this date. Try another date or workspace.")
+        st.error("❌ This room is entirely fully booked for this date.")
 
 # ==========================================
 # TAB 2: CANCELLATION SYSTEM
@@ -190,7 +186,7 @@ with tab2:
                     conn.update(spreadsheet=st.secrets["GSHEET_URL"], data=df_bookings)
                 
                 email_subject = f"❌ CANCELLED: {c_room} Reservation"
-                email_body = f"Hi Team,\n\nThe following room reservation has been cancelled:\n\n👤 Original Booker: {c_name}\n🏢 Room: {c_room}\n📅 Date: {c_date}\n⏰ Time: {c_slot}\n⚠️ Reason: {cancel_reason}\n\nThis slot is now open for bookings again."
+                email_body = f"Hi Team,\n\nThe following room reservation has been cancelled:\n\n👤 Original Booker: {c_name}\n🏢 Room: {c_room}\n📅 Date: {c_date}\n⏰ Time: {c_slot}\n⚠️ Reason: {cancel_reason}"
                 send_email_alert(email_subject, email_body)
                 
                 st.success("Slot successfully released!")
@@ -199,14 +195,13 @@ with tab2:
             else:
                 st.warning("Please type a quick reason for the cancellation.")
 
-# --- LIVE REFRESHED DASHBOARD FEED ---
+# ==========================================
+# SINGLE LIVE REFRESHED DASHBOARD FEED (OUTSIDE TABS)
+# ==========================================
 st.markdown("---")
 st.subheader("📅 Live Schedule Board")
-st.markdown("---")
-st.subheader("📅 Live Schedule Board")
-df_live = get_booking_data()
-if not df_live.empty:
-    display_board = df_live[df_live["Status"] == "Confirmed"]
+if not df_bookings.empty:
+    display_board = df_bookings[df_bookings["Status"] == "Confirmed"]
     if not display_board.empty:
         st.dataframe(display_board[["Date", "Time Slot", "Room", "Booked By", "Purpose"]], use_container_width=True, hide_index=True)
     else:
