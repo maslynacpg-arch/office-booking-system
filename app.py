@@ -151,12 +151,14 @@ with tab1:
             st.warning("Please fill out all identity fields.")
 
 # ==========================================
-# TAB 2: CANCELLATION SYSTEM (WITH AGENDA DISPLAY)
+# TAB 2: CANCELLATION SYSTEM (CRITICAL MATCH FIX)
 # ==========================================
 with tab2:
     st.subheader("Cancel an Existing Reservation")
     if not df_bookings.empty and "Status" in df_bookings.columns:
+        # CRITICAL FIX: Only grab items where status is explicitly confirmed
         active_list = df_bookings[df_bookings["Status"].str.lower() == "confirmed"].copy()
+        
         if not active_list.empty:
             active_list["Display_Text"] = (
                 active_list["Date"] + " | " + 
@@ -173,12 +175,15 @@ with tab2:
                     c_slot = selected_row["Time Slot"]
                     c_room = selected_row["Room"]
                     c_name = selected_row["Booked By"]
+                    c_purpose = selected_row["Purpose"] # Pick up exact meeting purpose
                     
+                    # Pass the Purpose to Google Script so it can uniquely find the exact row
                     cancel_payload = {
                         "Action": "Cancel",
                         "Date": c_date,
                         "Time_Slot": c_slot,
-                        "Room": c_room
+                        "Room": c_room,
+                        "Purpose": c_purpose
                     }
                     
                     response = requests.post(st.secrets["SCRIPT_URL"], data=json.dumps(cancel_payload))
@@ -209,12 +214,12 @@ with tab2:
                 else:
                     st.warning("Please type a reason for the cancellation.")
         else:
-            st.info("There are no active bookings to track right now.")
+            st.info("There are no active bookings to release right now.")
     else:
         st.info("There are no active bookings to track right now.")
 
 # ==========================================
-# 6. LIVE REFRESHED DASHBOARD FEED (SMART VISUAL FEED)
+# 6. LIVE REFRESHED DASHBOARD FEED
 # ==========================================
 st.markdown("---")
 st.subheader("📋 Active Schedule Table Feed (All Dates)")
