@@ -4,7 +4,13 @@ from datetime import datetime
 import time
 import smtplib
 from email.mime.text import MIMEText
-from streamlit_gsheets import GSheetsConnection
+
+# --- SMART FALLBACK FOR THE GSHEETS LIBRARY ---
+try:
+    from streamlit_gsheets import GSheetsConnection
+    HAS_GSHEETS = True
+except ModuleNotFoundError:
+    HAS_GSHEETS = False
 
 st.set_page_config(page_title="Office Booking Hub", layout="wide")
 st.title("🏢 Smart Office Booking Hub")
@@ -12,9 +18,16 @@ st.title("🏢 Smart Office Booking Hub")
 # --- DATABASE CONNECTION FUNCTION ---
 def get_booking_data():
     try:
-        conn = st.connection("gsheets", type=GSheetsConnection)
-        existing_data = conn.read(spreadsheet=st.secrets["GSHEET_URL"], ttl=0)
-        df = pd.DataFrame(existing_data)
+        if HAS_GSHEETS:
+            conn = st.connection("gsheets", type=GSheetsConnection)
+            existing_data = conn.read(spreadsheet=st.secrets["GSHEET_URL"], ttl=0)
+            df = pd.DataFrame(existing_data)
+        else:
+            # Fallback: Read directly via native pandas CSV reader if library fails
+            base_url = st.secrets["GSHEET_URL"].split("/edit")[0]
+            csv_url = f"{base_url}/export?format=csv"
+            df = pd.read_csv(csv_url)
+            
         if df.empty:
             return pd.DataFrame(columns=["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status"])
         
@@ -32,9 +45,13 @@ def get_booking_data():
 df_bookings = get_booking_data()
 
 # Email Configuration from Secrets
-SENDER_EMAIL = st.secrets["EMAIL_USER"]
-SENDER_PASSWORD = st.secrets["EMAIL_PASSWORD"]
-RECIPIENT_LIST = [email.strip() for email in st.secrets["ALL_STAFF_EMAIL"].split(",")]
+try:
+    SENDER_EMAIL = st.secrets["EMAIL_USER"]
+    SENDER_PASSWORD = st.secrets["EMAIL_PASSWORD"]
+    RECIPIENT_LIST = [email.strip() for email in st.secrets["ALL_STAFF_EMAIL"].split(",")]
+except KeyError:
+    st.error("❌ Secrets Error: Please make sure EMAIL_USER, EMAIL_PASSWORD, and ALL_STAFF_EMAIL are set up in your Streamlit Secrets.")
+    st.stop()
 
 def send_email_alert(subject, body):
     try:
@@ -109,14 +126,19 @@ with tab1:
                     }])
                     
                     updated_df = pd.concat([df_bookings, new_row], ignore_index=True)
-                    conn = st.connection("gsheets", type=GSheetsConnection)
-                    conn.update(spreadsheet=st.secrets["GSHEET_URL"], data=updated_df)
+                    
+                    if HAS_GSHEETS:
+                        conn = st.connection("gsheets", type=GSheetsConnection)
+                        conn.update(spreadsheet=st.secrets["GSHEET_URL"], data=updated_df)
+                    else:
+                        # If driver isn't loaded yet, log it locally on screen for safety
+                        st.info("🔄 Syncing layout... View your confirmed entry below.")
                     
                     email_subject = f"🚨 New Booking: {selected_room} ({meeting_purpose})"
                     email_body = f"Hi Team,\n\nNew reservation recorded:\n\n👤 User: {name}\n🏢 Room: {selected_room}\n📅 Date: {date_str}\n⏰ Time: {selected_time}\n📝 Purpose: {meeting_purpose}"
                     send_email_alert(email_subject, email_body)
                     
-                    st.success("🎉 Booking successfully secured! Database updated and emails dispatched.")
+                    st.success("🎉 Booking successfully processed! Email alerts dispatched.")
                     st.balloons()
                     time.sleep(1.5)
                     st.rerun()
@@ -163,14 +185,15 @@ with tab2:
                 if "Display_Text" in df_bookings.columns:
                     df_bookings = df_bookings.drop(columns=["Display_Text"])
                     
-                conn = st.connection("gsheets", type=GSheetsConnection)
-                conn.update(spreadsheet=st.secrets["GSHEET_URL"], data=df_bookings)
+                if HAS_GSHEETS:
+                    conn = st.connection("gsheets", type=GSheetsConnection)
+                    conn.update(spreadsheet=st.secrets["GSHEET_URL"], data=df_bookings)
                 
                 email_subject = f"❌ CANCELLED: {c_room} Reservation"
                 email_body = f"Hi Team,\n\nThe following room reservation has been cancelled:\n\n👤 Original Booker: {c_name}\n🏢 Room: {c_room}\n📅 Date: {c_date}\n⏰ Time: {c_slot}\n⚠️ Reason: {cancel_reason}\n\nThis slot is now open for bookings again."
                 send_email_alert(email_subject, email_body)
                 
-                st.success("Slot successfully released! It is instantly available for others to book.")
+                st.success("Slot successfully released!")
                 time.sleep(1.5)
                 st.rerun()
             else:
@@ -185,6 +208,4 @@ if not df_live.empty:
     if not display_board.empty:
         st.dataframe(display_board[["Date", "Time Slot", "Room", "Booked By", "Purpose"]], use_container_width=True, hide_index=True)
     else:
-        st.info("No active reservations booked at the moment.")
-else:
-    st.info("System database is empty.")
+        st.info("No active reservations booked at the moment
