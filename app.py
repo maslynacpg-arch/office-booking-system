@@ -20,7 +20,7 @@ def get_booking_data():
     try:
         if HAS_GSHEETS:
             conn = st.connection("gsheets", type=GSheetsConnection)
-            # ttl=0 forces Streamlit to read completely fresh cells every time
+            # ttl=0 completely bypasses Streamlit internal caching
             existing_data = conn.read(spreadsheet=st.secrets["GSHEET_URL"], ttl=0)
             df = pd.DataFrame(existing_data)
         else:
@@ -31,6 +31,7 @@ def get_booking_data():
         if df.empty or len(df.columns) == 0:
             return pd.DataFrame(columns=["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status"])
         
+        # Rigorous text normalization to prevent hidden space matching bugs
         df.columns = df.columns.str.strip()
         for col in df.columns:
             df[col] = df[col].astype(str).str.strip()
@@ -41,7 +42,7 @@ def get_booking_data():
     except Exception:
         return pd.DataFrame(columns=["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status"])
 
-# Load current live data
+# Load fresh live data on every page execution
 df_bookings = get_booking_data()
 
 # Email Configuration from Secrets
@@ -79,7 +80,7 @@ all_slots = [
 tab1, tab2, tab3 = st.tabs(["📝 Reserve a Room", "❌ Cancel a Booking", "📅 Visual Schedule Overview"])
 
 # ==========================================
-# TAB 1: BOOKING SYSTEM
+# TAB 1: BOOKING SYSTEM WITH STRICT VALIDATION
 # ==========================================
 with tab1:
     st.subheader("New Reservation")
@@ -89,10 +90,11 @@ with tab1:
 
     booked_slots = []
     if not df_bookings.empty:
+        # Strict validation: Stripping string wrappers and force casing matching lower-case variations
         active_bookings = df_bookings[
-            (df_bookings["Room"] == selected_room) & 
+            (df_bookings["Room"].str.lower() == selected_room.lower()) & 
             (df_bookings["Date"] == date_str) & 
-            (df_bookings["Status"] == "Confirmed")
+            (df_bookings["Status"].str.lower() == "confirmed")
         ]
         booked_slots = active_bookings["Time Slot"].tolist()
 
@@ -105,12 +107,13 @@ with tab1:
 
         if st.button("Confirm Booking", type="primary"):
             if name and meeting_purpose:
+                # Re-fetch database live inside button action block to ensure no race conditions
                 df_latest = get_booking_data()
                 double_check = df_latest[
-                    (df_latest["Room"] == selected_room) & 
+                    (df_latest["Room"].str.lower() == selected_room.lower()) & 
                     (df_latest["Date"] == date_str) & 
-                    (df_latest["Time Slot"] == selected_time) & 
-                    (df_latest["Status"] == "Confirmed")
+                    (df_latest["Time Slot"].str.lower() == selected_time.lower()) & 
+                    (df_latest["Status"].str.lower() == "confirmed")
                 ]
                 
                 if not double_check.empty:
@@ -151,7 +154,7 @@ with tab2:
     st.subheader("Cancel an Existing Reservation")
     
     if not df_bookings.empty:
-        active_list = df_bookings[df_bookings["Status"] == "Confirmed"]
+        active_list = df_bookings[df_bookings["Status"].str.lower() == "confirmed"]
     else:
         active_list = pd.DataFrame()
         
@@ -204,10 +207,9 @@ with tab3:
     st.write("Easily check what slots are taken across all dates and rooms below.")
     
     if not df_bookings.empty:
-        confirmed_records = df_bookings[df_bookings["Status"] == "Confirmed"]
+        confirmed_records = df_bookings[df_bookings["Status"].str.lower() == "confirmed"]
         if not confirmed_records.empty:
-            # Re-shape data to create a custom matrix view grid
-            matrix_df = confirmed_records.pivot_index_style = confirmed_records.pivot_table(
+            matrix_df = confirmed_records.pivot_table(
                 index="Time Slot", 
                 columns=["Date", "Room"], 
                 values="Booked By", 
@@ -216,9 +218,9 @@ with tab3:
             
             st.dataframe(matrix_df, use_container_width=True)
         else:
-            st.info("No bookings recorded to map out yet.")
+            st.info("No active bookings recorded to map out yet.")
     else:
-        st.info("No bookings recorded to map out yet.")
+        st.info("No active bookings recorded to map out yet.")
 
 # ==========================================
 # SINGLE LIVE REFRESHED DASHBOARD FEED
@@ -226,11 +228,7 @@ with tab3:
 st.markdown("---")
 st.subheader("📋 Active Schedule Table Feed")
 if not df_bookings.empty:
-    display_board = df_bookings[df_bookings["Status"] == "Confirmed"]
+    display_board = df_bookings[df_bookings["Status"].str.lower() == "confirmed"]
     if not display_board.empty:
         display_board = display_board.sort_values(by=["Date", "Time Slot"])
-        st.dataframe(display_board[["Date", "Time Slot", "Room", "Booked By", "Purpose"]], use_container_width=True, hide_index=True)
-    else:
-        st.info("No active reservations booked at the moment.")
-else:
-    st.info("System database is empty.")
+        st.dataframe(display_board[["Date", "Time Slot", "Room", "Booked By", "Purpose"]
