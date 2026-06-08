@@ -71,7 +71,7 @@ for hour in range(8, 19):
 tab1, tab2 = st.tabs(["📝 Reserve a Room", "❌ Cancel a Booking"])
 
 # ==========================================
-# TAB 1: VISUAL BOOKING SYSTEM
+# TAB 1: VISUAL BOOKING SYSTEM (CUSTOM WINDOWS)
 # ==========================================
 with tab1:
     st.subheader("Visual Schedule Planner")
@@ -126,7 +126,7 @@ with tab1:
                 if response.status_code == 200:
                     st.success(f"🎉 Booking recorded successfully!")
                     
-                    # Custom Email Formatting with Intro & Disclaimer Footers
+                    # Custom Professional Email Content
                     email_subject = f"📢 Workspace Secured: {selected_room} ({date_str})"
                     email_body = (
                         f"Dear Team,\n\n"
@@ -151,7 +151,7 @@ with tab1:
             st.warning("Please fill out all identity fields.")
 
 # ==========================================
-# TAB 2: CANCELLATION SYSTEM
+# TAB 2: CANCELLATION SYSTEM (CASE-INSENSITIVE ROUTING)
 # ==========================================
 with tab2:
     st.subheader("Cancel an Existing Reservation")
@@ -182,7 +182,7 @@ with tab2:
                     if response.status_code == 200:
                         st.success("🎉 Cancellation fully processed!")
                         
-                        # Cancellation Email Layout with Footer Disclaimer
+                        # Custom Corporate Cancellation Layout
                         email_subject = f"❌ Workspace Released: {c_room} ({c_date})"
                         email_body = (
                             f"Dear Team,\n\n"
@@ -210,15 +210,39 @@ with tab2:
         st.info("There are no active bookings to track right now.")
 
 # ==========================================
-# 6. LIVE REFRESHED DASHBOARD FEED
+# 6. LIVE REFRESHED DASHBOARD FEED (SMART VISUAL FEED)
 # ==========================================
 st.markdown("---")
 st.subheader("📋 Active Schedule Table Feed (All Dates)")
+
 if not df_bookings.empty and "Status" in df_bookings.columns:
-    display_board = df_bookings[df_bookings["Status"].str.lower() == "confirmed"]
-    if not display_board.empty:
-        st.dataframe(display_board.sort_values(by=["Date", "Time Slot"])[["Date", "Time Slot", "Room", "Booked By", "Purpose"]], use_container_width=True, hide_index=True)
-    else:
-        st.info("No active reservations booked at the moment.")
+    display_board = df_bookings.copy()
+    display_board = display_board.sort_values(by=["Date", "Time Slot"])
+    
+    def format_row(row):
+        status = str(row["Status"]).strip().lower()
+        if status == "cancelled":
+            return {
+                "Date": f"~~{row['Date']}~~",
+                "Time Slot": f"~~{row['Time Slot']}~~",
+                "Room": f"~~{row['Room']}~~",
+                "Booked By": f"~~{row['Booked By']}~~",
+                "Status/Notes": "❌ Cancelled & Now Open"
+            }
+        else:
+            return {
+                "Date": row["Date"],
+                "Time Slot": row["Time Slot"],
+                "Room": row["Room"],
+                "Booked By": row["Booked By"],
+                "Status/Notes": "🟢 Active & Secured"
+            }
+            
+    formatted_data = display_board.apply(format_row, axis=1, result_type="expand")
+    st.dataframe(
+        formatted_data[["Date", "Time Slot", "Room", "Booked By", "Status/Notes"]], 
+        use_container_width=True, 
+        hide_index=True
+    )
 else:
     st.info("System database is empty.")
