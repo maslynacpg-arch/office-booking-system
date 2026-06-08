@@ -164,4 +164,37 @@ with tab2:
             
             if st.button("Submit Cancellation Request", type="secondary"):
                 if cancel_reason:
-                    selected_row =
+                    selected_row = active_list[active_list["Display_Text"] == cancel_selection].iloc[0]
+                    c_date = selected_row["Date"]
+                    c_slot = selected_row["Time Slot"]
+                    c_room = selected_row["Room"]
+                    c_name = selected_row["Booked By"]
+                    
+                    st.success("🎉 Cancellation alert generated!")
+                    
+                    email_subject = f"❌ Room Booking Cancelled: {c_room}"
+                    email_body = f"Hi Team,\n\nThe following room reservation has been cancelled and the slot is now open:\n\n👤 Original Booker: {c_name}\n📍 Room: {c_room}\n📅 Date: {c_date}\n⏰ Released Time: {c_slot}\n⚠️ Reason: {cancel_reason}"
+                    send_email_alert(email_subject, email_body)
+                    
+                    time.sleep(1.5)
+                    st.rerun()
+                else:
+                    st.warning("Please type a reason for the cancellation.")
+        else:
+            st.info("There are no active bookings to track right now.")
+    else:
+        st.info("There are no active bookings to track right now.")
+
+# ==========================================
+# 6. LIVE REFRESHED DASHBOARD FEED
+# ==========================================
+st.markdown("---")
+st.subheader("📋 Active Schedule Table Feed (All Dates)")
+if not df_bookings.empty and "Status" in df_bookings.columns:
+    display_board = df_bookings[df_bookings["Status"].str.lower() == "confirmed"]
+    if not display_board.empty:
+        st.dataframe(display_board.sort_values(by=["Date", "Time Slot"])[["Date", "Time Slot", "Room", "Booked By", "Purpose"]], use_container_width=True, hide_index=True)
+    else:
+        st.info("No active reservations booked at the moment.")
+else:
+    st.info("System database is empty.")
