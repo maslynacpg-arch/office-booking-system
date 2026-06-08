@@ -4,6 +4,7 @@ from datetime import datetime
 import time
 import smtplib
 from email.mime.text import MIMEText
+from streamlit_calendar import calendar
 
 # --- SMART FALLBACK FOR THE GSHEETS LIBRARY ---
 try:
@@ -15,7 +16,7 @@ except ModuleNotFoundError:
 st.set_page_config(page_title="Office Booking Hub", layout="wide")
 st.title("🏢 Smart Office Booking Hub")
 
-# --- DATABASE CONNECTION FUNCTION ---
+# --- DATABASE CONNECTION FUNCTION WITH LIVE REFRESH ---
 def get_booking_data():
     try:
         if HAS_GSHEETS:
@@ -24,10 +25,10 @@ def get_booking_data():
             df = pd.DataFrame(existing_data)
         else:
             base_url = st.secrets["GSHEET_URL"].split("/edit")[0]
-            csv_url = f"{base_url}/export?format=csv"
+            csv_url = f"{base_url}/export?format=csv&nocache={int(time.time())}"
             df = pd.read_csv(csv_url)
             
-        if df.empty:
+        if df.empty or len(df.columns) == 0:
             return pd.DataFrame(columns=["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status"])
         
         df.columns = df.columns.str.strip()
@@ -40,7 +41,7 @@ def get_booking_data():
     except Exception:
         return pd.DataFrame(columns=["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status"])
 
-# Load current data
+# Load current live data
 df_bookings = get_booking_data()
 
 # Email Configuration from Secrets
@@ -75,7 +76,17 @@ all_slots = [
     "04:00 PM - 05:00 PM"
 ]
 
-tab1, tab2 = st.tabs(["📝 Reserve a Room", "❌ Cancel a Booking"])
+# Time mapping dict to assist calendar engine parsing
+time_mapping = {
+    "09:00 AM - 10:00 AM": ("09:00:00", "10:00:00"),
+    "10:00 AM - 11:00 AM": ("10:00:00", "11:00:00"),
+    "11:00 AM - 12:00 PM": ("11:00:00", "12:00:00"),
+    "02:00 PM - 03:00 PM": ("14:00:00", "15:00:00"),
+    "03:00 PM - 04:00 PM": ("15:00:00", "16:00:00"),
+    "04:00 PM - 05:00 PM": ("16:00:00", "17:00:00")
+}
+
+tab1, tab2, tab3 = st.tabs(["📝 Reserve a Room", "❌ Cancel a Booking", "📅 Calendar Schedule View"])
 
 # ==========================================
 # TAB 1: BOOKING SYSTEM
@@ -113,7 +124,7 @@ with tab1:
                 ]
                 
                 if not double_check.empty:
-                    st.error("❌ Double Booking Blocked! Someone just reserved this slot.")
+                    st.error("❌ Double Booking Blocked! This slot was just reserved by someone else.")
                 else:
                     new_row = pd.DataFrame([{
                         "Date": date_str,
@@ -130,8 +141,8 @@ with tab1:
                         conn = st.connection("gsheets", type=GSheetsConnection)
                         conn.update(spreadsheet=st.secrets["GSHEET_URL"], data=updated_df)
                     
-                    email_subject = f"🚨 New Booking: {selected_room} ({meeting_purpose})"
-                    email_body = f"Hi Team,\n\nPlease note that the following workspace has been secured for an upcoming session:\n\n👤 User: {name}\n🏢 Room: {selected_room}\n📅 Date: {date_str}\n⏰ Time: {selected_time}\n📝 Purpose: {meeting_purpose}"
+                    email_subject = f"🏢 Room Booking Confirmed: {selected_room}"
+                    email_body = f"Hi Team,\n\nA new room reservation has been officially registered in the system:\n\n👤 Staff Name: {name}\n📍 Facility: {selected_room}\n📅 Date: {date_str}\n⏰ Duration: {selected_time}\n📝 Agenda: {meeting_purpose}\n\nPlease refer to the Live Schedule Board if you need to coordinate timings."
                     send_email_alert(email_subject, email_body)
                     
                     st.success("🎉 Booking successfully processed! Email alerts dispatched.")
@@ -185,8 +196,8 @@ with tab2:
                     conn = st.connection("gsheets", type=GSheetsConnection)
                     conn.update(spreadsheet=st.secrets["GSHEET_URL"], data=df_bookings)
                 
-                email_subject = f"❌ CANCELLED: {c_room} Reservation"
-                email_body = f"Hi Team,\n\nThe following room reservation has been cancelled:\n\n👤 Original Booker: {c_name}\n🏢 Room: {c_room}\n📅 Date: {c_date}\n⏰ Time: {c_slot}\n⚠️ Reason: {cancel_reason}"
+                email_subject = f"❌ Room Booking Cancelled: {c_room}"
+                email_body = f"Hi Team,\n\nThe following room reservation has been removed and is now available for booking:\n\n👤 Original Booker: {c_name}\n📍 Facility: {c_room}\n📅 Date: {c_date}\n⏰ Released Time: {c_slot}\n⚠️ Reason: {cancel_reason}"
                 send_email_alert(email_subject, email_body)
                 
                 st.success("Slot successfully released!")
@@ -196,13 +207,54 @@ with tab2:
                 st.warning("Please type a quick reason for the cancellation.")
 
 # ==========================================
-# SINGLE LIVE REFRESHED DASHBOARD FEED (OUTSIDE TABS)
+# TAB 3: VISUAL CALENDAR VIEW DATABASE
+# ==========================================
+with tab3:
+    st.subheader("📅 Interactive Calendar Schedule View")
+    calendar_events = []
+    
+    if not df_bookings.empty:
+        confirmed_records = df_bookings[df_bookings["Status"] == "Confirmed"]
+        for _, row in confirmed_records.iterrows():
+            slot_text = row["Time Slot"]
+            if slot_text in time_mapping:
+                start_t, end_t = time_mapping[slot_text]
+                # Distinct corporate colors per room
+                bg_color = "#2E7D32" if row["Room"] == "Meeting Room SOM" else "#1565C0"
+                
+                calendar_events.append({
+                    "title": f"[{row['Room']}] {row['Booked By']} - {row['Purpose']}",
+                    "start": f"{row['Date']}T{start_t}",
+                    "end": f"{row['Date']}T{end_t}",
+                    "backgroundColor": bg_color,
+                    "borderColor": bg_color
+                })
+                
+    calendar_options = {
+        "initialView": "dayGridMonth",
+        "headerToolbar": {
+            "left": "prev,next today",
+            "center": "title",
+            "right": "dayGridMonth,timeGridWeek,timeGridDay"
+        }
+    }
+    
+    calendar(events=calendar_events, options=calendar_options, key="office_calendar")
+    
+    st.markdown("""
+    **Color Legend:** 🟢 <span style='color:#2E7D32; font-weight:bold;'>Green Block</span> = Meeting Room SOM  
+    🔵 <span style='color:#1565C0; font-weight:bold;'>Blue Block</span> = Meeting Room KGO
+    """, unsafe_allow_html=True)
+
+# ==========================================
+# SINGLE LIVE REFRESHED DASHBOARD FEED
 # ==========================================
 st.markdown("---")
-st.subheader("📅 Live Schedule Board")
+st.subheader("📋 Active Schedule Table Feed")
 if not df_bookings.empty:
     display_board = df_bookings[df_bookings["Status"] == "Confirmed"]
     if not display_board.empty:
+        display_board = display_board.sort_values(by=["Date", "Time Slot"])
         st.dataframe(display_board[["Date", "Time Slot", "Room", "Booked By", "Purpose"]], use_container_width=True, hide_index=True)
     else:
         st.info("No active reservations booked at the moment.")
