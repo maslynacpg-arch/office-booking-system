@@ -65,7 +65,7 @@ def send_email_alert(subject, body):
         st.error(f"Email alert failed to send: {str(e)}")
 
 # --- SYSTEM CONFIGURATION ---
-rooms = ["Meeting Room A", "Meeting Room B", "Discussion Room 1"]
+rooms = ["Meeting Room SOM", "Meeting Room KGO"]
 all_slots = [
     "09:00 AM - 10:00 AM", 
     "10:00 AM - 11:00 AM", 
