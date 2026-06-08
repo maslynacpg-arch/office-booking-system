@@ -202,10 +202,14 @@ with tab2:
 # --- LIVE REFRESHED DASHBOARD FEED ---
 st.markdown("---")
 st.subheader("📅 Live Schedule Board")
+st.markdown("---")
+st.subheader("📅 Live Schedule Board")
 df_live = get_booking_data()
 if not df_live.empty:
     display_board = df_live[df_live["Status"] == "Confirmed"]
     if not display_board.empty:
         st.dataframe(display_board[["Date", "Time Slot", "Room", "Booked By", "Purpose"]], use_container_width=True, hide_index=True)
     else:
-        st.info("No active reservations booked at the moment
+        st.info("No active reservations booked at the moment.")
+else:
+    st.info("System database is empty.")
