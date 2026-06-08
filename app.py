@@ -117,4 +117,59 @@ with tab1:
                     "Action": "Book",
                     "Date": date_str,
                     "Time_Slot": custom_time_slot,
-                    "Room": selected_room
+                    "Room": selected_room,
+                    "Booked_By": name,
+                    "Purpose": meeting_purpose
+                }
+                response = requests.post(st.secrets["SCRIPT_URL"], data=json.dumps(payload))
+                
+                if response.Post_status_code == 200 or response.status_code == 200:
+                    st.success(f"🎉 Booking recorded successfully!")
+                    
+                    # Custom Professional Email Content
+                    email_subject = f"📢 Workspace Secured: {selected_room} ({date_str})"
+                    email_body = (
+                        f"Dear Team,\n\n"
+                        f"Please note that the following workspace has been secured for an upcoming session.\n\n"
+                        f"📋 Reservation Details:\n"
+                        f"📍 Workspace: {selected_room}\n"
+                        f"👤 Reserved By: {name}\n"
+                        f"📅 Session Date: {date_str}\n"
+                        f"⏰ Time Window: {custom_time_slot}\n"
+                        f"📝 Session Agenda: {meeting_purpose}\n\n"
+                        f"---\n"
+                        f"This is a system-generated notification. Please do not reply directly to this email."
+                    )
+                    send_email_alert(email_subject, email_body)
+                    
+                    st.balloons()
+                    time.sleep(2)
+                    st.rerun()
+                else:
+                    st.error("Failed writing data to Google Engine connection endpoints.")
+        else:
+            st.warning("Please fill out all identity fields.")
+
+# ==========================================
+# TAB 2: CANCELLATION SYSTEM (WITH AGENDA DISPLAY)
+# ==========================================
+with tab2:
+    st.subheader("Cancel an Existing Reservation")
+    if not df_bookings.empty and "Status" in df_bookings.columns:
+        active_list = df_bookings[df_bookings["Status"].str.lower() == "confirmed"].copy()
+        if not active_list.empty:
+            active_list["Display_Text"] = (
+                active_list["Date"] + " | " + 
+                active_list["Time Slot"] + " | " + 
+                active_list["Room"] + " (" + active_list["Booked By"] + ") - 📝 " + active_list["Purpose"]
+            )
+            cancel_selection = st.selectbox("Select booking to release:", active_list["Display_Text"].tolist())
+            cancel_reason = st.text_input("Reason for Cancellation:", placeholder="e.g., Meeting rescheduled / postponed")
+            
+            if st.button("Submit Cancellation Request", type="secondary"):
+                if cancel_reason:
+                    selected_row = active_list[active_list["Display_Text"] == cancel_selection].iloc[0]
+                    c_date = selected_row["Date"]
+                    c_slot = selected_row["Time Slot"]
+                    c_room = selected_row["Room"]
+                    c_name = selected_row["Booked By"]
