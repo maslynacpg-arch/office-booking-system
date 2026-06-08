@@ -98,4 +98,23 @@ with tab1:
     col1, col2 = st.columns(2)
     with col1:
         start_time = st.selectbox("Select Start Time:", time_options, index=2)
-    with col2
+    with col2:
+        end_time = st.selectbox("Select End Time:", time_options, index=4)
+
+    custom_time_slot = f"{start_time} - {end_time}"
+    name = st.text_input("Your Name:", key="book_name")
+    meeting_purpose = st.text_input("Meeting Purpose / Agenda:", key="book_purpose")
+
+    if st.button("Confirm Reservation Securely", type="primary"):
+        if name and meeting_purpose:
+            start_idx = time_options.index(start_time)
+            end_idx = time_options.index(end_time)
+            
+            if start_idx >= end_idx:
+                st.error("❌ Invalid Time Selection: End time must be later than the Start time.")
+            else:
+                payload = {
+                    "Action": "Book",
+                    "Date": date_str,
+                    "Time_Slot": custom_time_slot,
+                    "Room": selected_room
