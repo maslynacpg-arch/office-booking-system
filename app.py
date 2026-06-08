@@ -123,7 +123,7 @@ with tab1:
                 }
                 response = requests.post(st.secrets["SCRIPT_URL"], data=json.dumps(payload))
                 
-                if response.Post_status_code == 200 or response.status_code == 200:
+                if response.status_code == 200:
                     st.success(f"🎉 Booking recorded successfully!")
                     
                     # Custom Professional Email Content
@@ -173,3 +173,82 @@ with tab2:
                     c_slot = selected_row["Time Slot"]
                     c_room = selected_row["Room"]
                     c_name = selected_row["Booked By"]
+                    
+                    cancel_payload = {
+                        "Action": "Cancel",
+                        "Date": c_date,
+                        "Time_Slot": c_slot,
+                        "Room": c_room
+                    }
+                    
+                    response = requests.post(st.secrets["SCRIPT_URL"], data=json.dumps(cancel_payload))
+                    
+                    if response.status_code == 200:
+                        st.success("🎉 Cancellation fully processed!")
+                        
+                        # Custom Corporate Cancellation Layout
+                        email_subject = f"❌ Workspace Released: {c_room} ({c_date})"
+                        email_body = (
+                            f"Dear Team,\n\n"
+                            f"Please note that the workspace allocation below has been released and is now open for new reservations.\n\n"
+                            f"🗑️ Released Reservation Details:\n"
+                            f"📍 Workspace: {c_room}\n"
+                            f"👤 Original Booker: {c_name}\n"
+                            f"📅 Date Affected: {c_date}\n"
+                            f"⏰ Released Slot: {c_slot}\n"
+                            f"⚠️ Cancellation Reason: {cancel_reason}\n\n"
+                            f"---\n"
+                            f"This is a system-generated notification. Please do not reply directly to this email."
+                        )
+                        send_email_alert(email_subject, email_body)
+                        
+                        time.sleep(1.5)
+                        st.rerun()
+                    else:
+                        st.error("Failed to connect to Google Sheet database for cancellation processing.")
+                else:
+                    st.warning("Please type a reason for the cancellation.")
+        else:
+            st.info("There are no active bookings to track right now.")
+    else:
+        st.info("There are no active bookings to track right now.")
+
+# ==========================================
+# 6. LIVE REFRESHED DASHBOARD FEED (SMART VISUAL FEED)
+# ==========================================
+st.markdown("---")
+st.subheader("📋 Active Schedule Table Feed (All Dates)")
+
+if not df_bookings.empty and "Status" in df_bookings.columns:
+    display_board = df_bookings.copy()
+    display_board = display_board.sort_values(by=["Date", "Time Slot"])
+    
+    def format_row(row):
+        status = str(row["Status"]).strip().lower()
+        if status == "cancelled":
+            return {
+                "Date": f"~~{row['Date']}~~",
+                "Time Slot": f"~~{row['Time Slot']}~~",
+                "Room": f"~~{row['Room']}~~",
+                "Booked By": f"~~{row['Booked By']}~~",
+                "Purpose": f"~~{row['Purpose']}~~",
+                "Status/Notes": "❌ Cancelled & Now Open"
+            }
+        else:
+            return {
+                "Date": row["Date"],
+                "Time Slot": row["Time Slot"],
+                "Room": row["Room"],
+                "Booked By": row["Booked By"],
+                "Purpose": row["Purpose"],
+                "Status/Notes": "🟢 Active & Secured"
+            }
+            
+    formatted_data = display_board.apply(format_row, axis=1, result_type="expand")
+    st.dataframe(
+        formatted_data[["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status/Notes"]], 
+        use_container_width=True, 
+        hide_index=True
+    )
+else:
+    st.info("System database is empty.")
