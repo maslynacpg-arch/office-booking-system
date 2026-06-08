@@ -4,7 +4,6 @@ from datetime import datetime
 import time
 import smtplib
 from email.mime.text import MIMEText
-from streamlit_calendar import calendar
 
 # --- SMART FALLBACK FOR THE GSHEETS LIBRARY ---
 try:
@@ -21,6 +20,7 @@ def get_booking_data():
     try:
         if HAS_GSHEETS:
             conn = st.connection("gsheets", type=GSheetsConnection)
+            # ttl=0 forces Streamlit to read completely fresh cells every time
             existing_data = conn.read(spreadsheet=st.secrets["GSHEET_URL"], ttl=0)
             df = pd.DataFrame(existing_data)
         else:
@@ -76,17 +76,7 @@ all_slots = [
     "04:00 PM - 05:00 PM"
 ]
 
-# Time mapping dict to assist calendar engine parsing
-time_mapping = {
-    "09:00 AM - 10:00 AM": ("09:00:00", "10:00:00"),
-    "10:00 AM - 11:00 AM": ("10:00:00", "11:00:00"),
-    "11:00 AM - 12:00 PM": ("11:00:00", "12:00:00"),
-    "02:00 PM - 03:00 PM": ("14:00:00", "15:00:00"),
-    "03:00 PM - 04:00 PM": ("15:00:00", "16:00:00"),
-    "04:00 PM - 05:00 PM": ("16:00:00", "17:00:00")
-}
-
-tab1, tab2, tab3 = st.tabs(["📝 Reserve a Room", "❌ Cancel a Booking", "📅 Calendar Schedule View"])
+tab1, tab2, tab3 = st.tabs(["📝 Reserve a Room", "❌ Cancel a Booking", "📅 Visual Schedule Overview"])
 
 # ==========================================
 # TAB 1: BOOKING SYSTEM
@@ -207,44 +197,28 @@ with tab2:
                 st.warning("Please type a quick reason for the cancellation.")
 
 # ==========================================
-# TAB 3: VISUAL CALENDAR VIEW DATABASE
+# TAB 3: VISUAL MATRIX OVERVIEW
 # ==========================================
 with tab3:
-    st.subheader("📅 Interactive Calendar Schedule View")
-    calendar_events = []
+    st.subheader("📅 Interactive Schedule Grid Matrix")
+    st.write("Easily check what slots are taken across all dates and rooms below.")
     
     if not df_bookings.empty:
         confirmed_records = df_bookings[df_bookings["Status"] == "Confirmed"]
-        for _, row in confirmed_records.iterrows():
-            slot_text = row["Time Slot"]
-            if slot_text in time_mapping:
-                start_t, end_t = time_mapping[slot_text]
-                # Distinct corporate colors per room
-                bg_color = "#2E7D32" if row["Room"] == "Meeting Room SOM" else "#1565C0"
-                
-                calendar_events.append({
-                    "title": f"[{row['Room']}] {row['Booked By']} - {row['Purpose']}",
-                    "start": f"{row['Date']}T{start_t}",
-                    "end": f"{row['Date']}T{end_t}",
-                    "backgroundColor": bg_color,
-                    "borderColor": bg_color
-                })
-                
-    calendar_options = {
-        "initialView": "dayGridMonth",
-        "headerToolbar": {
-            "left": "prev,next today",
-            "center": "title",
-            "right": "dayGridMonth,timeGridWeek,timeGridDay"
-        }
-    }
-    
-    calendar(events=calendar_events, options=calendar_options, key="office_calendar")
-    
-    st.markdown("""
-    **Color Legend:** 🟢 <span style='color:#2E7D32; font-weight:bold;'>Green Block</span> = Meeting Room SOM  
-    🔵 <span style='color:#1565C0; font-weight:bold;'>Blue Block</span> = Meeting Room KGO
-    """, unsafe_allow_html=True)
+        if not confirmed_records.empty:
+            # Re-shape data to create a custom matrix view grid
+            matrix_df = confirmed_records.pivot_index_style = confirmed_records.pivot_table(
+                index="Time Slot", 
+                columns=["Date", "Room"], 
+                values="Booked By", 
+                aggfunc=lambda x: " 🛑 ".join(x)
+            ).reindex(all_slots).fillna("🟢 Available")
+            
+            st.dataframe(matrix_df, use_container_width=True)
+        else:
+            st.info("No bookings recorded to map out yet.")
+    else:
+        st.info("No bookings recorded to map out yet.")
 
 # ==========================================
 # SINGLE LIVE REFRESHED DASHBOARD FEED
