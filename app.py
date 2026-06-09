@@ -9,7 +9,7 @@ import json
 
 # 1. SETUP PAGE CONFIGURATION FIRST
 st.set_page_config(page_title="Office Booking Hub", layout="wide")
-st.title("🏢 Smart Office Booking Hub")
+st.title("🏢 Meeting Room Booking")
 
 # 2. DEFINE DATABASE FUNCTION
 def get_booking_data():
