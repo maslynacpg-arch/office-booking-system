@@ -8,7 +8,7 @@ import requests
 import json
 
 # 1. SETUP PAGE CONFIGURATION FIRST
-st.set_page_config(page_title="Office Booking Hub", layout="wide")
+st.set_page_config(page_title="Meeting Room Booking", layout="wide")
 st.title("🏢 Meeting Room Booking")
 
 # 2. DEFINE DATABASE FUNCTION
@@ -151,13 +151,18 @@ with tab1:
             st.warning("Please fill out all identity fields.")
 
 # ==========================================
-# TAB 2: CANCELLATION SYSTEM (CRITICAL MATCH FIX)
+# TAB 2: CANCELLATION SYSTEM (FUTURE FILTER FIX)
 # ==========================================
 with tab2:
     st.subheader("Cancel an Existing Reservation")
     if not df_bookings.empty and "Status" in df_bookings.columns:
-        # CRITICAL FIX: Only grab items where status is explicitly confirmed
-        active_list = df_bookings[df_bookings["Status"].str.lower() == "confirmed"].copy()
+        today_str = datetime.today().strftime("%Y-%m-%d")
+        
+        # Filters out any bookings whose date has already passed
+        active_list = df_bookings[
+            (df_bookings["Status"].str.lower() == "confirmed") & 
+            (df_bookings["Date"] >= today_str)
+        ].copy()
         
         if not active_list.empty:
             active_list["Display_Text"] = (
@@ -175,9 +180,8 @@ with tab2:
                     c_slot = selected_row["Time Slot"]
                     c_room = selected_row["Room"]
                     c_name = selected_row["Booked By"]
-                    c_purpose = selected_row["Purpose"] # Pick up exact meeting purpose
+                    c_purpose = selected_row["Purpose"]
                     
-                    # Pass the Purpose to Google Script so it can uniquely find the exact row
                     cancel_payload = {
                         "Action": "Cancel",
                         "Date": c_date,
@@ -191,7 +195,6 @@ with tab2:
                     if response.status_code == 200:
                         st.success("🎉 Cancellation fully processed!")
                         
-                        # Custom Corporate Cancellation Layout
                         email_subject = f"❌ Workspace Released: {c_room} ({c_date})"
                         email_body = (
                             f"Dear Team,\n\n"
@@ -214,9 +217,9 @@ with tab2:
                 else:
                     st.warning("Please type a reason for the cancellation.")
         else:
-            st.info("There are no active bookings to release right now.")
+            st.info("There are no active upcoming bookings to release right now.")
     else:
-        st.info("There are no active bookings to track right now.")
+        st.info("There are no active upcoming bookings to track right now.")
 
 # ==========================================
 # 6. LIVE REFRESHED DASHBOARD FEED
