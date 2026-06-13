@@ -71,7 +71,7 @@ for hour in range(8, 19):
 tab1, tab2 = st.tabs(["📝 Reserve a Room", "❌ Cancel a Booking"])
 
 # ==========================================
-# TAB 1: VISUAL TIMELINE INTERFACE & BOOKING
+# TAB 1: TRUE VISUAL GRID TIMELINE INTERFACE
 # ==========================================
 with tab1:
     st.subheader("Visual Schedule Planner")
@@ -80,10 +80,8 @@ with tab1:
     
     st.markdown("### 📊 Interactive Daily Availability Timeline")
     
-    # Render a separate timeline block set for each individual room
+    # Generate HTML/CSS blocks for a true horizontal visual matrix layout
     for room in rooms:
-        st.markdown(f"#### 📍 {room}")
-        
         # Get active confirmed slots for this room on the selected date
         room_active = pd.DataFrame()
         if not df_bookings.empty and "Status" in df_bookings.columns:
@@ -93,46 +91,68 @@ with tab1:
                 (df_bookings["Status"].str.lower() == "confirmed")
             ]
         
-        # We represent the timeline in 4 clean, scannable column blocks
-        grid_cols = st.columns(4)
+        # Build HTML for rows container
+        html_content = f"""
+        <div style="margin-bottom: 25px; font-family: sans-serif;">
+            <div style="font-weight: bold; font-size: 16px; margin-bottom: 8px; color: #1E293B;">📍 {room}</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+        """
         
-        # Group time windows across the 4 grid blocks
-        time_chunks = [
-            time_options[0:5],   # 08:00 AM - 10:00 AM
-            time_options[5:10],  # 10:30 AM - 12:30 PM
-            time_options[10:15], # 01:00 PM - 03:00 PM
-            time_options[15:21]  # 03:30 PM - 06:00 PM
-        ]
-        
-        for idx, chunk in enumerate(time_chunks):
-            with grid_cols[idx]:
-                for t_slot in chunk:
-                    # Check if this precise individual time mark sits inside an active confirmed meeting
-                    is_slot_taken = False
-                    booked_label = ""
-                    
-                    if not room_active.empty:
-                        for _, b_row in room_active.iterrows():
-                            try:
-                                ex_start, ex_end = b_row["Time Slot"].split(" - ")
-                                s_idx = time_options.index(ex_start)
-                                e_idx = time_options.index(ex_end)
-                                target_idx = time_options.index(t_slot)
-                                
-                                if s_idx <= target_idx < e_idx:
-                                    is_slot_taken = True
-                                    booked_label = f" (Booked by {b_row['Booked By']})"
-                                    break
-                            except Exception:
-                                continue
-                    
-                    # Output color badges to act as a fully functional visual visual layout matrix
-                    if is_slot_taken:
-                        st.markdown(f"🔴 **{t_slot}**{booked_label}")
-                    else:
-                        st.markdown(f"🟢 **{t_slot}** — *Available*")
-        st.markdown("---")
+        for t_slot in time_options:
+            is_slot_taken = False
+            booked_by_name = ""
+            
+            if not room_active.empty:
+                for _, b_row in room_active.iterrows():
+                    try:
+                        ex_start, ex_end = b_row["Time Slot"].split(" - ")
+                        s_idx = time_options.index(ex_start)
+                        e_idx = time_options.index(ex_end)
+                        target_idx = time_options.index(t_slot)
+                        
+                        if s_idx <= target_idx < e_idx:
+                            is_slot_taken = True
+                            booked_by_name = b_row['Booked By']
+                            break
+                    except Exception:
+                        continue
+            
+            # Form block style values based on occupation status
+            if is_slot_taken:
+                bg_color = "#FCA5A5"  # Soft red
+                text_color = "#991B1B"
+                border_color = "#EF4444"
+                title_desc = f"Booked by {booked_by_name}"
+                status_text = f"✕ {t_slot}"
+            else:
+                bg_color = "#A7F3D0"  # Soft green
+                text_color = "#065F46"
+                border_color = "#10B981"
+                title_desc = "Available for selection"
+                status_text = t_slot
+                
+            html_content += f"""
+            <div title="{title_desc}" style="
+                flex: 1;
+                min-width: 85px;
+                text-align: center;
+                padding: 10px 4px;
+                border-radius: 6px;
+                font-size: 12px;
+                font-weight: 600;
+                background-color: {bg_color};
+                color: {text_color};
+                border: 1px solid {border_color};
+                box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            ">
+                {status_text}
+            </div>
+            """
+            
+        html_content += "</div></div>"
+        st.html(html_content)
 
+    st.markdown("---")
     st.subheader("2. Input Custom Booking Details")
     selected_room = st.radio("Choose Room Target:", rooms, key="book_room")
     
