@@ -31,9 +31,6 @@ def get_booking_data():
 # Load data safely
 df_bookings = get_booking_data()
 
-# Get today's date string format (YYYY-MM-DD)
-today_str = datetime.today().strftime("%Y-%m-%d")
-
 # 3. DEFINE EMAIL SYSTEM
 try:
     SENDER_EMAIL = st.secrets["EMAIL_USER"]
@@ -74,27 +71,68 @@ for hour in range(8, 19):
 tab1, tab2 = st.tabs(["📝 Reserve a Room", "❌ Cancel a Booking"])
 
 # ==========================================
-# TAB 1: VISUAL BOOKING SYSTEM & CLASH PREVENTION
+# TAB 1: VISUAL TIMELINE INTERFACE & BOOKING
 # ==========================================
 with tab1:
     st.subheader("Visual Schedule Planner")
     selected_date = st.date_input("1. Choose Date:", datetime.today(), key="book_date")
     date_str = selected_date.strftime("%Y-%m-%d")
     
-    st.markdown("### 📅 Live Confirmed Bookings for Selected Date")
-    if not df_bookings.empty and "Status" in df_bookings.columns:
-        today_active = df_bookings[
-            (df_bookings["Date"] == date_str) & 
-            (df_bookings["Status"].str.lower() == "confirmed")
+    st.markdown("### 📊 Interactive Daily Availability Timeline")
+    
+    # Render a separate timeline block set for each individual room
+    for room in rooms:
+        st.markdown(f"#### 📍 {room}")
+        
+        # Get active confirmed slots for this room on the selected date
+        room_active = pd.DataFrame()
+        if not df_bookings.empty and "Status" in df_bookings.columns:
+            room_active = df_bookings[
+                (df_bookings["Date"] == date_str) & 
+                (df_bookings["Room"] == room) & 
+                (df_bookings["Status"].str.lower() == "confirmed")
+            ]
+        
+        # We represent the timeline in 4 clean, scannable column blocks
+        grid_cols = st.columns(4)
+        
+        # Group time windows across the 4 grid blocks
+        time_chunks = [
+            time_options[0:5],   # 08:00 AM - 10:00 AM
+            time_options[5:10],  # 10:30 AM - 12:30 PM
+            time_options[10:15], # 01:00 PM - 03:00 PM
+            time_options[15:21]  # 03:30 PM - 06:00 PM
         ]
-        if not today_active.empty:
-            st.dataframe(today_active[["Time Slot", "Room", "Booked By", "Purpose"]], use_container_width=True, hide_index=True)
-        else:
-            st.text("🟢 No bookings reserved for this date yet. All times are available!")
-    else:
-        st.text("🟢 No bookings reserved for this date yet. All times are available!")
+        
+        for idx, chunk in enumerate(time_chunks):
+            with grid_cols[idx]:
+                for t_slot in chunk:
+                    # Check if this precise individual time mark sits inside an active confirmed meeting
+                    is_slot_taken = False
+                    booked_label = ""
+                    
+                    if not room_active.empty:
+                        for _, b_row in room_active.iterrows():
+                            try:
+                                ex_start, ex_end = b_row["Time Slot"].split(" - ")
+                                s_idx = time_options.index(ex_start)
+                                e_idx = time_options.index(ex_end)
+                                target_idx = time_options.index(t_slot)
+                                
+                                if s_idx <= target_idx < e_idx:
+                                    is_slot_taken = True
+                                    booked_label = f" (Booked by {b_row['Booked By']})"
+                                    break
+                            except Exception:
+                                continue
+                    
+                    # Output color badges to act as a fully functional visual visual layout matrix
+                    if is_slot_taken:
+                        st.markdown(f"🔴 **{t_slot}**{booked_label}")
+                    else:
+                        st.markdown(f"🟢 **{t_slot}** — *Available*")
+        st.markdown("---")
 
-    st.markdown("---")
     st.subheader("2. Input Custom Booking Details")
     selected_room = st.radio("Choose Room Target:", rooms, key="book_room")
     
@@ -135,7 +173,6 @@ with tab1:
                             ex_start_idx = time_options.index(ex_start)
                             ex_end_idx = time_options.index(ex_end)
                             
-                            # Overlap verification logic
                             if start_idx < ex_end_idx and end_idx > ex_start_idx:
                                 is_clashed = True
                                 clashed_by = row["Booked By"]
