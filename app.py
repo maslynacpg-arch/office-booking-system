@@ -243,4 +243,142 @@ with tab2:
 with tab3:
     st.subheader("Reschedule an Existing Booking")
     if not df_bookings.empty and "Status" in df_bookings.columns:
-        res
+        resched_list = df_bookings[df_bookings["Status"].str.lower() == "confirmed"].copy()
+        resched_list = resched_list[~resched_list["Date"].apply(is_past_date)]
+        
+        if not resched_list.empty:
+            resched_list["Display_Text"] = resched_list["Date"] + " | " + resched_list["Time Slot"] + " | " + resched_list["Room"] + " (" + resched_list["Booked By"] + ")"
+            selected_meeting_text = st.selectbox("1. Choose Meeting to Change:", resched_list["Display_Text"].tolist(), key="resched_select")
+            selected_meeting_row = resched_list[resched_list["Display_Text"] == selected_meeting_text].iloc[0]
+            
+            st.markdown("---")
+            st.markdown("### 2. Enter New Allocation Details")
+            
+            new_date = st.date_input("Choose New Date:", datetime.today(), key="resched_date", format="DD/MM/YYYY")
+            new_date_str = new_date.strftime("%d/%m/%Y")
+            new_room = st.radio("Choose New Room Target:", rooms, key="resched_room")
+            
+            r_col1, r_col2 = st.columns(2)
+            with r_col1:
+                new_start = st.selectbox("New Start Time:", time_options, index=2, key="start_resched")
+            with r_col2:
+                new_end = st.selectbox("New End Time:", time_options, index=4, key="end_resched")
+                
+            new_time_slot = f"{new_start} - {new_end}"
+            
+            if st.button("Apply Reschedule Changes", type="primary"):
+                new_start_idx = time_options.index(new_start)
+                new_end_idx = time_options.index(new_end)
+                
+                if new_start_idx >= new_end_idx:
+                    st.error("❌ End time must be later than start time.")
+                else:
+                    is_clashed = False
+                    if not df_bookings.empty and "Status" in df_bookings.columns:
+                        clash_filter = df_bookings[
+                            ((df_bookings["Date"] == new_date_str) | (df_bookings["Date"] == new_date.strftime("%Y-%m-%d"))) & 
+                            (df_bookings["Room"] == new_room) & 
+                            (df_bookings["Status"].str.lower() == "confirmed")
+                        ]
+                        for _, row in clash_filter.iterrows():
+                            try:
+                                if (selected_meeting_row["Date"] == row["Date"] and 
+                                    selected_meeting_row["Room"] == new_room and 
+                                    selected_meeting_row["Time Slot"] == row["Time Slot"]):
+                                    continue
+                                    
+                                ex_start, ex_end = row["Time Slot"].split(" - ")
+                                if new_start_idx < time_options.index(ex_end) and new_end_idx > time_options.index(ex_start):
+                                    is_clashed = True
+                                    clashed_by = row["Booked By"]
+                                    clashed_slot = row["Time Slot"]
+                                    break
+                            except Exception: continue
+                            
+                    if is_clashed:
+                        st.error(f"⚠️ **Schedule Clash!** Already occupied by **{clashed_by}** ({clashed_slot}).")
+                    else:
+                        # Add a tracking keyword to the original purpose row so the table feed can identify it
+                        tracked_purpose = f"{selected_meeting_row['Purpose']} [RESCHED_TO:{new_date_str}]"
+                        
+                        cancel_payload = {"Action": "Cancel", "Date": selected_meeting_row["Date"], "Time_Slot": selected_meeting_row["Time Slot"], "Room": selected_meeting_row["Room"], "Purpose": tracked_purpose}
+                        res_c = requests.post(st.secrets["SCRIPT_URL"], data=json.dumps(cancel_payload))
+                        
+                        book_payload = {"Action": "Book", "Date": new_date_str, "Time_Slot": new_time_slot, "Room": new_room, "Booked_By": selected_meeting_row["Booked By"], "Purpose": selected_meeting_row["Purpose"]}
+                        res_b = requests.post(st.secrets["SCRIPT_URL"], data=json.dumps(book_payload))
+                        
+                        if res_b.status_code == 200:
+                            st.success("🔄 Booking successfully rescheduled!")
+                            
+                            subject = f"🔄 Meeting Rescheduled: {selected_meeting_row['Room']}"
+                            body = (
+                                f"Dear Team,\n\n"
+                                f"Notice: The meeting detailed below has been rescheduled.\n\n"
+                                f"🗓️ Previous Details:\n"
+                                f"❌ Date/Time: {selected_meeting_row['Date']} ({selected_meeting_row['Time Slot']})\n"
+                                f"❌ Room Location: {selected_meeting_row['Room']}\n\n"
+                                f"✨ Updated Details:\n"
+                                f"✅ New Date/Time: {new_date_str} ({new_time_slot})\n"
+                                f"✅ New Room Location: {new_room}\n"
+                                f"👤 Booker: {selected_meeting_row['Booked By']}\n"
+                                f"📝 Purpose: {selected_meeting_row['Purpose']}\n"
+                            )
+                            send_email_alert(subject, body)
+                            time.sleep(1.5)
+                            st.rerun()
+                        else:
+                            st.error("Failed to alter remote database entries.")
+        else: st.info("No active upcoming bookings available to reschedule.")
+
+# ==========================================
+# 6. LIVE REFRESHED DASHBOARD FEED WITH DYNAMIC LABELS
+# ==========================================
+st.markdown("---")
+st.subheader("📋 Active Schedule Table Feed")
+
+if not df_bookings.empty:
+    display_board = df_bookings.copy()
+    display_board = display_board[~display_board["Date"].apply(is_past_date)]
+    
+    if not display_board.empty:
+        def format_row(row):
+            status = str(row["Status"]).strip().lower()
+            purpose_text = str(row["Purpose"])
+            
+            if status == "cancelled":
+                # Check if it contains our hidden reschedule tag
+                if "[RESCHED_TO:" in purpose_text:
+                    target_date = purpose_text.split("[RESCHED_TO:")[1].replace("]", "")
+                    clean_purpose = purpose_text.split(" [RESCHED_TO:")[0]
+                    return {
+                        "Date": f"~~{row['Date']}~~", 
+                        "Time Slot": f"~~{row['Time Slot']}~~", 
+                        "Room": f"~~{row['Room']}~~", 
+                        "Booked By": f"~~{row['Booked By']}~~", 
+                        "Purpose": clean_purpose, 
+                        "Status/Notes": f"🔄 Rescheduled to {target_date}"
+                    }
+                else:
+                    return {
+                        "Date": f"~~{row['Date']}~~", 
+                        "Time Slot": f"~~{row['Time Slot']}~~", 
+                        "Room": f"~~{row['Room']}~~", 
+                        "Booked By": f"~~{row['Booked By']}~~", 
+                        "Purpose": row["Purpose"], 
+                        "Status/Notes": "❌ Cancelled & Now Open"
+                    }
+            return {
+                "Date": row["Date"], 
+                "Time Slot": row["Time Slot"], 
+                "Room": row["Room"], 
+                "Booked By": row["Booked By"], 
+                "Purpose": row["Purpose"], 
+                "Status/Notes": "🟢 Active & Secured"
+            }
+                
+        formatted_data = display_board.apply(format_row, axis=1, result_type="expand")
+        st.dataframe(formatted_data[["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status/Notes"]], use_container_width=True, hide_index=True)
+    else:
+        st.info("No active schedules booked for today onwards.")
+else:
+    st.info("System database is empty.")
