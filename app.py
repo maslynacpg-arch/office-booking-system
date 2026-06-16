@@ -362,7 +362,8 @@ if not df_bookings.empty:
         
         # Check for Reschedule Tag
         if "[RESCHED_TO:" in purpose_text:
-            target_date = purpose_text.split("[RESCHED_TO:")[1].replace("]", "").strip()
+        target_date = purpose_text.split("[RESCHED_TO:")[1].replace("]", "").strip()
+        return {**row, "Status/Notes": f"🔄 Rescheduled to {target_date}"}
             # If target_date is DD/MM/YYYY, format it to YYYY-MM-DD for consistency
             try:
                 formatted_target = datetime.strptime(target_date, "%d/%m/%Y").strftime("%Y-%m-%d")
