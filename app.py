@@ -75,8 +75,9 @@ tab1, tab2, tab3 = st.tabs(["📝 Reserve a Room", "❌ Cancel a Booking", "🔄
 # ==========================================
 with tab1:
     st.subheader("Visual Schedule Planner")
-    selected_date = st.date_input("1. Choose Date:", datetime.today(), key="book_date")
-    date_str = selected_date.strftime("%d/%m/%Y")  # Modified to DD/MM/YYYY
+    # Forced the widget display format to DD/MM/YYYY here:
+    selected_date = st.date_input("1. Choose Date:", datetime.today(), key="book_date", format="DD/MM/YYYY")
+    date_str = selected_date.strftime("%d/%m/%Y")
     
     st.markdown("### 📊 Interactive Daily Availability Timeline")
     
@@ -245,8 +246,9 @@ with tab3:
             st.markdown("---")
             st.markdown("### 2. Enter New Allocation Details")
             
-            new_date = st.date_input("Choose New Date:", datetime.today(), key="resched_date")
-            new_date_str = new_date.strftime("%d/%m/%Y")  # Modified to DD/MM/YYYY
+            # Forced the widget display format to DD/MM/YYYY here:
+            new_date = st.date_input("Choose New Date:", datetime.today(), key="resched_date", format="DD/MM/YYYY")
+            new_date_str = new_date.strftime("%d/%m/%Y")
             new_room = st.radio("Choose New Room Target:", rooms, key="resched_room")
             
             r_col1, r_col2 = st.columns(2)
