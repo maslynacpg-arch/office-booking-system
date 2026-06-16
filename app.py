@@ -78,7 +78,7 @@ def is_past_date(date_string):
     try:
         clean_date = date_string.replace("-", "/")
         if len(clean_date.split('/')[0]) == 4:
-            booking_date = datetime.strptime(clean_date, "%d/%m/%Y")
+            booking_date = datetime.strptime(clean_date, "%Y/%m/%d")
         else:
             booking_date = datetime.strptime(clean_date, "%d/%m/%Y")
         return booking_date.date() < today_obj.date()
@@ -99,7 +99,7 @@ with tab1:
         room_active = pd.DataFrame()
         if not df_bookings.empty and "Status" in df_bookings.columns:
             room_active = df_bookings[
-                ((df_bookings["Date"] == date_str) | (df_bookings["Date"] == selected_date.strftime("%d/%m/%Y"))) & 
+                ((df_bookings["Date"] == date_str) | (df_bookings["Date"] == selected_date.strftime("%Y-%m-%d"))) & 
                 (df_bookings["Room"] == room) & 
                 (df_bookings["Status"].str.lower() == "confirmed")
             ]
@@ -181,7 +181,7 @@ with tab1:
                 is_clashed = False
                 if not df_bookings.empty and "Status" in df_bookings.columns:
                     existing_room_bookings = df_bookings[
-                        ((df_bookings["Date"] == date_str) | (df_bookings["Date"] == selected_date.strftime("%d/%m/%Y"))) & 
+                        ((df_bookings["Date"] == date_str) | (df_bookings["Date"] == selected_date.strftime("%Y-%m-%d"))) & 
                         (df_bookings["Room"] == selected_room) & 
                         (df_bookings["Status"].str.lower() == "confirmed")
                     ]
@@ -276,7 +276,7 @@ with tab3:
                     is_clashed = False
                     if not df_bookings.empty and "Status" in df_bookings.columns:
                         clash_filter = df_bookings[
-                            ((df_bookings["Date"] == new_date_str) | (df_bookings["Date"] == new_date.strftime("%d/%m/%Y"))) & 
+                            ((df_bookings["Date"] == new_date_str) | (df_bookings["Date"] == new_date.strftime("%Y-%m-%d"))) & 
                             (df_bookings["Room"] == new_room) & 
                             (df_bookings["Status"].str.lower() == "confirmed")
                         ]
