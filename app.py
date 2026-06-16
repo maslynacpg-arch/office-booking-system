@@ -12,29 +12,36 @@ st.set_page_config(page_title="Meeting Room Booking", layout="wide")
 st.title("🏢 Meeting Room Booking")
 
 # 2. DEFINE DATABASE FUNCTION
+# 2. DEFINE DATABASE FUNCTION WITH DATE NORMALIZATION
 def get_booking_data():
     try:
-base_url = st.secrets["GSHEET_URL"].split("/edit")[0] csv_url = f"{base_url}/export?format=csv&nocache={int(time.time())}" df = pd.read_csv(csv_url) df.columns = df.columns.str.strip() if df.empty: return pd.DataFrame(columns=["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status"]) for col in df.columns: df[col] = df[col].astype(str).str.strip() # --- NEW: STANDARDIZE ALL DATES TO DD/MM/YYYY --- def normalize_date(d): try: if "-" in d: # Handles YYYY-MM-DD return datetime.strptime(d, "%Y-%m-%d").strftime("%d/%m/%Y") return d # Already DD/MM/YYYY except: return d df["Date"] = df["Date"].apply(normalize_date) # ----------------------------------------------- return df except Exception: return pd.DataFrame(columns=["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status"]) df_bookings = get_booking_data() today_obj = datetime.today()
-# 3. DEFINE EMAIL SYSTEM
-try:
-    SENDER_EMAIL = st.secrets["EMAIL_USER"]
-    SENDER_PASSWORD = st.secrets["EMAIL_PASSWORD"]
-    RECIPIENT_LIST = [email.strip() for email in st.secrets["ALL_STAFF_EMAIL"].split(",")]
-except KeyError:
-    st.error("❌ Secrets Configuration Missing in Streamlit Settings.")
-    st.stop()
-
-def send_email_alert(subject, body):
-    try:
-        msg = MIMEText(body)
-        msg["Subject"] = subject
-        msg["From"] = SENDER_EMAIL
-        msg["To"] = ", ".join(RECIPIENT_LIST)
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(SENDER_EMAIL, SENDER_PASSWORD)
-            server.sendmail(SENDER_EMAIL, RECIPIENT_LIST, msg.as_string())
+        # Each of these lines must be indented by 4 spaces
+        base_url = st.secrets["GSHEET_URL"].split("/edit")[0]
+        csv_url = f"{base_url}/export?format=csv&nocache={int(time.time())}"
+        df = pd.read_csv(csv_url)
+        df.columns = df.columns.str.strip()
+        
+        if df.empty:
+            return pd.DataFrame(columns=["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status"])
+        
+        for col in df.columns:
+            df[col] = df[col].astype(str).str.strip()
+        
+        # Normalize dates
+        def normalize_date(d):
+            try:
+                if "-" in d:
+                    return datetime.strptime(d, "%Y-%m-%d").strftime("%d/%m/%Y")
+                return d
+            except: 
+                return d
+            
+        df["Date"] = df["Date"].apply(normalize_date)
+        return df
+        
     except Exception:
-        pass
+        # This catch block handles connection or parsing errors
+        return pd.DataFrame(columns=["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status"])
 
 # 4. DEFINE SYSTEM CONSTANTS
 rooms = ["Meeting Room SOM", "Meeting Room KGO"]
