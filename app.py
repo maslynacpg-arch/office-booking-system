@@ -73,7 +73,7 @@ tab1, tab2, tab3 = st.tabs(["📝 Reserve a Room", "❌ Cancel a Booking", "🔄
 # Get current date info for filtering out past dates
 today_obj = datetime.today()
 
-# Helper function to check if a date string is past due
+# --- ADJUSTMENT 1: SMART FORMAT PARSING FOR MIXED DATE INPUTS ---
 def is_past_date(date_string):
     try:
         clean_date = date_string.replace("-", "/")
@@ -298,7 +298,6 @@ with tab3:
                     if is_clashed:
                         st.error(f"⚠️ **Schedule Clash!** Already occupied by **{clashed_by}** ({clashed_slot}).")
                     else:
-                        # Add a tracking keyword to the original purpose row so the table feed can identify it
                         tracked_purpose = f"{selected_meeting_row['Purpose']} [RESCHED_TO:{new_date_str}]"
                         
                         cancel_payload = {"Action": "Cancel", "Date": selected_meeting_row["Date"], "Time_Slot": selected_meeting_row["Time Slot"], "Room": selected_meeting_row["Room"], "Purpose": tracked_purpose}
@@ -331,7 +330,7 @@ with tab3:
         else: st.info("No active upcoming bookings available to reschedule.")
 
 # ==========================================
-# 6. LIVE REFRESHED DASHBOARD FEED WITH DYNAMIC LABELS
+# 6. LIVE REFRESHED DASHBOARD FEED WITH DYNAMIC LABELS (UPDATED COMPONENT)
 # ==========================================
 st.markdown("---")
 st.subheader("📋 Active Schedule Table Feed")
@@ -345,22 +344,40 @@ if not df_bookings.empty:
             status = str(row["Status"]).strip().lower()
             purpose_text = str(row["Purpose"])
             
+            # --- ADJUSTMENT 2: STANDARDIZE CURRENT ROW DATE TO YYYY-MM-DD ---
+            try:
+                if "/" in str(row["Date"]):
+                    row_date_clean = datetime.strptime(str(row["Date"]), "%d/%m/%Y").strftime("%Y-%m-%d")
+                else:
+                    row_date_clean = datetime.strptime(str(row["Date"]), "%Y-%m-%d").strftime("%Y-%m-%d")
+            except:
+                row_date_clean = str(row["Date"])
+
             if status == "cancelled":
-                # Check if it contains our hidden reschedule tag
                 if "[RESCHED_TO:" in purpose_text:
-                    target_date = purpose_text.split("[RESCHED_TO:")[1].replace("]", "")
+                    target_date = purpose_text.split("[RESCHED_TO:")[1].replace("]", "").strip()
+                    
+                    # --- ADJUSTMENT 3: STANDARDIZE TARGET DATE TO YYYY-MM-DD ---
+                    try:
+                        if "/" in target_date:
+                            target_date_clean = datetime.strptime(target_date, "%d/%m/%Y").strftime("%Y-%m-%d")
+                        else:
+                            target_date_clean = datetime.strptime(target_date, "%Y-%m-%d").strftime("%Y-%m-%d")
+                    except:
+                        target_date_clean = target_date
+
                     clean_purpose = purpose_text.split(" [RESCHED_TO:")[0]
                     return {
-                        "Date": f"~~{row['Date']}~~", 
+                        "Date": f"~~{row_date_clean}~~", 
                         "Time Slot": f"~~{row['Time Slot']}~~", 
                         "Room": f"~~{row['Room']}~~", 
                         "Booked By": f"~~{row['Booked By']}~~", 
                         "Purpose": clean_purpose, 
-                        "Status/Notes": f"🔄 Rescheduled to {target_date}"
+                        "Status/Notes": f"🔄 Rescheduled to {target_date_clean}"
                     }
                 else:
                     return {
-                        "Date": f"~~{row['Date']}~~", 
+                        "Date": f"~~{row_date_clean}~~", 
                         "Time Slot": f"~~{row['Time Slot']}~~", 
                         "Room": f"~~{row['Room']}~~", 
                         "Booked By": f"~~{row['Booked By']}~~", 
@@ -368,7 +385,7 @@ if not df_bookings.empty:
                         "Status/Notes": "❌ Cancelled & Now Open"
                     }
             return {
-                "Date": row["Date"], 
+                "Date": row_date_clean, 
                 "Time Slot": row["Time Slot"], 
                 "Room": row["Room"], 
                 "Booked By": row["Booked By"], 
