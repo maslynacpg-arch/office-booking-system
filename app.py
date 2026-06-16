@@ -303,7 +303,7 @@ with tab3:
                             
                             subject = f"🔄 Meeting Rescheduled: {selected_meeting_row['Room']}"
                             body = (
-                                f"Dear Team,\n\nAn existing calendar reservation has been rescheduled.\n\n"
+                                f"Dear Team,\n\nNotice: The meeting detailed below has been rescheduled.\n\n"
                                 f"🗓️ Previous Details:\n"
                                 f"❌ Date/Time: {selected_meeting_row['Date']} ({selected_meeting_row['Time Slot']})\n"
                                 f"❌ Room Location: {selected_meeting_row['Room']}\n\n"
