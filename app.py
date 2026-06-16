@@ -68,10 +68,10 @@ for hour in range(8, 19):
         time_options.append(f"{display_hour:02d}:{minute:02d} {period}")
 
 # 5. CREATE THE TABS SYSTEM
-tab1, tab2 = st.tabs(["📝 Reserve a Room", "❌ Cancel a Booking"])
+tab1, tab2, tab3 = st.tabs(["📝 Reserve a Room", "❌ Cancel a Booking", "🔄 Reschedule a Booking"])
 
 # ==========================================
-# TAB 1: TRUE VISUAL GRID TIMELINE INTERFACE
+# TAB 1: VISUAL TIMELINE INTERFACE
 # ==========================================
 with tab1:
     st.subheader("Visual Schedule Planner")
@@ -80,9 +80,7 @@ with tab1:
     
     st.markdown("### 📊 Interactive Daily Availability Timeline")
     
-    # Generate HTML/CSS blocks for a true horizontal visual matrix layout
     for room in rooms:
-        # Get active confirmed slots for this room on the selected date
         room_active = pd.DataFrame()
         if not df_bookings.empty and "Status" in df_bookings.columns:
             room_active = df_bookings[
@@ -91,7 +89,6 @@ with tab1:
                 (df_bookings["Status"].str.lower() == "confirmed")
             ]
         
-        # Build HTML for rows container
         html_content = f"""
         <div style="margin-bottom: 25px; font-family: sans-serif;">
             <div style="font-weight: bold; font-size: 16px; margin-bottom: 8px; color: #1E293B;">📍 {room}</div>
@@ -117,15 +114,14 @@ with tab1:
                     except Exception:
                         continue
             
-            # Form block style values based on occupation status
             if is_slot_taken:
-                bg_color = "#FCA5A5"  # Soft red
+                bg_color = "#FCA5A5"
                 text_color = "#991B1B"
                 border_color = "#EF4444"
                 title_desc = f"Booked by {booked_by_name}"
                 status_text = f"✕ {t_slot}"
             else:
-                bg_color = "#A7F3D0"  # Soft green
+                bg_color = "#A7F3D0"
                 text_color = "#065F46"
                 border_color = "#10B981"
                 title_desc = "Available for selection"
@@ -133,16 +129,9 @@ with tab1:
                 
             html_content += f"""
             <div title="{title_desc}" style="
-                flex: 1;
-                min-width: 85px;
-                text-align: center;
-                padding: 10px 4px;
-                border-radius: 6px;
-                font-size: 12px;
-                font-weight: 600;
-                background-color: {bg_color};
-                color: {text_color};
-                border: 1px solid {border_color};
+                flex: 1; min-width: 85px; text-align: center; padding: 10px 4px;
+                border-radius: 6px; font-size: 12px; font-weight: 600;
+                background-color: {bg_color}; color: {text_color}; border: 1px solid {border_color};
                 box-shadow: 0 1px 2px rgba(0,0,0,0.05);
             ">
                 {status_text}
@@ -158,9 +147,9 @@ with tab1:
     
     col1, col2 = st.columns(2)
     with col1:
-        start_time = st.selectbox("Select Start Time:", time_options, index=2)
+        start_time = st.selectbox("Select Start Time:", time_options, index=2, key="start_book")
     with col2:
-        end_time = st.selectbox("Select End Time:", time_options, index=4)
+        end_time = st.selectbox("Select End Time:", time_options, index=4, key="end_book")
 
     custom_time_slot = f"{start_time} - {end_time}"
     name = st.text_input("Your Name:", key="book_name")
@@ -174,188 +163,36 @@ with tab1:
             if start_idx >= end_idx:
                 st.error("❌ Invalid Time Selection: End time must be later than the Start time.")
             else:
-                # 🛡️ BACKGROUND CLASH-CHECKING ENGINE
                 is_clashed = False
-                clashed_by = ""
-                clashed_purpose = ""
-                clashed_slot = ""
-                
                 if not df_bookings.empty and "Status" in df_bookings.columns:
                     existing_room_bookings = df_bookings[
                         (df_bookings["Date"] == date_str) & 
                         (df_bookings["Room"] == selected_room) & 
                         (df_bookings["Status"].str.lower() == "confirmed")
                     ]
-                    
                     for _, row in existing_room_bookings.iterrows():
                         try:
                             ex_start, ex_end = row["Time Slot"].split(" - ")
-                            ex_start_idx = time_options.index(ex_start)
-                            ex_end_idx = time_options.index(ex_end)
-                            
-                            if start_idx < ex_end_idx and end_idx > ex_start_idx:
+                            if start_idx < time_options.index(ex_end) and end_idx > time_options.index(ex_start):
                                 is_clashed = True
                                 clashed_by = row["Booked By"]
-                                clashed_purpose = row["Purpose"]
                                 clashed_slot = row["Time Slot"]
                                 break
-                        except Exception:
-                            continue
+                        except Exception: continue
 
                 if is_clashed:
-                    st.error(f"⚠️ **Schedule Clash!** {selected_room} is already reserved by **{clashed_by}** during **{clashed_slot}** for *'{clashed_purpose}'*. Please change your time slot window or select a different room.")
+                    st.error(f"⚠️ **Schedule Clash!** Reserved by **{clashed_by}** during **{clashed_slot}**.")
                 else:
-                    payload = {
-                        "Action": "Book",
-                        "Date": date_str,
-                        "Time_Slot": custom_time_slot,
-                        "Room": selected_room,
-                        "Booked_By": name,
-                        "Purpose": meeting_purpose
-                    }
+                    payload = {"Action": "Book", "Date": date_str, "Time_Slot": custom_time_slot, "Room": selected_room, "Booked_By": name, "Purpose": meeting_purpose}
                     response = requests.post(st.secrets["SCRIPT_URL"], data=json.dumps(payload))
-                    
                     if response.status_code == 200:
-                        st.success(f"🎉 Booking recorded successfully!")
-                        
-                        email_subject = f"📢 Workspace Secured: {selected_room} ({date_str})"
-                        email_body = (
-                            f"Dear Team,\n\n"
-                            f"Please note that the following workspace has been secured for an upcoming session.\n\n"
-                            f"📋 Reservation Details:\n"
-                            f"📍 Workspace: {selected_room}\n"
-                            f"👤 Reserved By: {name}\n"
-                            f"📅 Session Date: {date_str}\n"
-                            f"⏰ Time Window: {custom_time_slot}\n"
-                            f"📝 Session Agenda: {meeting_purpose}\n\n"
-                            f"---\n"
-                            f"This is a system-generated notification. Please do not reply directly to this email."
-                        )
-                        send_email_alert(email_subject, email_body)
-                        
+                        st.success("🎉 Booking recorded successfully!")
+                        send_email_alert(f"📢 Workspace Secured: {selected_room} ({date_str})", f"Details:\nRoom: {selected_room}\nBy: {name}\nTime: {custom_time_slot}\nAgenda: {meeting_purpose}")
                         st.balloons()
-                        time.sleep(2)
-                        st.rerun()
-                    else:
-                        st.error("Failed writing data to Google Engine connection endpoints.")
-        else:
-            st.warning("Please fill out all identity fields.")
-
-# ==========================================
-# TAB 2: CANCELLATION SYSTEM (DATETIME AUTO-FILTER)
-# ==========================================
-with tab2:
-    st.subheader("Cancel an Existing Reservation")
-    if not df_bookings.empty and "Status" in df_bookings.columns:
-        df_active = df_bookings.copy()
-        df_active["Parsed_Date"] = pd.to_datetime(df_active["Date"], errors='coerce')
-        today_date = pd.to_datetime(datetime.today().strftime("%Y-%m-%d"))
-        
-        active_list = df_active[
-            (df_active["Status"].str.lower() == "confirmed") & 
-            (df_active["Parsed_Date"] >= today_date)
-        ].copy()
-        
-        if not active_list.empty:
-            active_list["Display_Text"] = (
-                active_list["Date"] + " | " + 
-                active_list["Time Slot"] + " | " + 
-                active_list["Room"] + " (" + active_list["Booked By"] + ") - 📝 " + active_list["Purpose"]
-            )
-            cancel_selection = st.selectbox("Select booking to release:", active_list["Display_Text"].tolist())
-            cancel_reason = st.text_input("Reason for Cancellation:", placeholder="e.g., Meeting rescheduled / postponed")
-            
-            if st.button("Submit Cancellation Request", type="secondary"):
-                if cancel_reason:
-                    selected_row = active_list[active_list["Display_Text"] == cancel_selection].iloc[0]
-                    c_date = selected_row["Date"]
-                    c_slot = selected_row["Time Slot"]
-                    c_room = selected_row["Room"]
-                    c_name = selected_row["Booked By"]
-                    c_purpose = selected_row["Purpose"]
-                    
-                    cancel_payload = {
-                        "Action": "Cancel",
-                        "Date": c_date,
-                        "Time_Slot": c_slot,
-                        "Room": c_room,
-                        "Purpose": c_purpose
-                    }
-                    
-                    response = requests.post(st.secrets["SCRIPT_URL"], data=json.dumps(cancel_payload))
-                    
-                    if response.status_code == 200:
-                        st.success("🎉 Cancellation fully processed!")
-                        
-                        email_subject = f"❌ Workspace Released: {c_room} ({c_date})"
-                        email_body = (
-                            f"Dear Team,\n\n"
-                            f"Please note that the workspace allocation below has been released and is now open for new reservations.\n\n"
-                            f"🗑️ Released Reservation Details:\n"
-                            f"📍 Workspace: {c_room}\n"
-                            f"👤 Original Booker: {c_name}\n"
-                            f"📅 Date Affected: {c_date}\n"
-                            f"⏰ Released Slot: {c_slot}\n"
-                            f"⚠️ Cancellation Reason: {cancel_reason}\n\n"
-                            f"---\n"
-                            f"This is a system-generated notification. Please do not reply directly to this email."
-                        )
-                        send_email_alert(email_subject, email_body)
-                        
                         time.sleep(1.5)
                         st.rerun()
-                    else:
-                        st.error("Failed to connect to Google Sheet database for cancellation processing.")
-                else:
-                    st.warning("Please type a reason for the cancellation.")
         else:
-            st.info("There are no active upcoming bookings to release right now.")
-    else:
-        st.info("There are no active upcoming bookings to track right now.")
+            st.warning("Please fill out all fields.")
 
 # ==========================================
-# 6. LIVE REFRESHED DASHBOARD FEED (TODAY & UPCOMING ONLY)
-# ==========================================
-st.markdown("---")
-st.subheader("📋 Active Schedule Table Feed (Today & Upcoming)")
-
-if not df_bookings.empty and "Status" in df_bookings.columns:
-    display_board = df_bookings.copy()
-    display_board["Parsed_Date"] = pd.to_datetime(display_board["Date"], errors='coerce')
-    today_date = pd.to_datetime(datetime.today().strftime("%Y-%m-%d"))
-    
-    display_board = display_board[display_board["Parsed_Date"] >= today_date]
-    display_board = display_board.sort_values(by=["Parsed_Date", "Time Slot"])
-    
-    if not display_board.empty:
-        def format_row(row):
-            status = str(row["Status"]).strip().lower()
-            if status == "cancelled":
-                return {
-                    "Date": f"~~{row['Date']}~~",
-                    "Time Slot": f"~~{row['Time Slot']}~~",
-                    "Room": f"~~{row['Room']}~~",
-                    "Booked By": f"~~{row['Booked By']}~~",
-                    "Purpose": f"~~{row['Purpose']}~~",
-                    "Status/Notes": "❌ Cancelled & Now Open"
-                }
-            else:
-                return {
-                    "Date": row["Date"],
-                    "Time Slot": row["Time Slot"],
-                    "Room": row["Room"],
-                    "Booked By": row["Booked By"],
-                    "Purpose": row["Purpose"],
-                    "Status/Notes": "🟢 Active & Secured"
-                }
-                
-        formatted_data = display_board.apply(format_row, axis=1, result_type="expand")
-        st.dataframe(
-            formatted_data[["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status/Notes"]], 
-            use_container_width=True, 
-            hide_index=True
-        )
-    else:
-        st.info("No active schedules or reservations booked for today onwards.")
-else:
-    st.info("System database is empty.")
+# TAB 2: C
