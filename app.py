@@ -338,7 +338,7 @@ st.subheader("📋 Active Schedule Table Feed")
 if not df_bookings.empty:
     display_board = df_bookings.copy()
     
-    # 1. Standardize all dates to YYYY-MM-DD for reliable sorting and matching
+    # 1. Standardize all dates to YYYY-MM-DD
     def clean_date_format(d):
         try:
             if "/" in str(d):
@@ -348,94 +348,52 @@ if not df_bookings.empty:
             return str(d)
             
     display_board["Date"] = display_board["Date"].apply(clean_date_format)
-    
-    # Filter out past dates using our helper
     display_board = display_board[~display_board["Date"].apply(is_past_date)]
     
     if not display_board.empty:
-        # 2. SMART TRACKING: Identify duplicates rescheduled on the frontend
-        # Group by identical appointment traits to find multiple dates
+        # 2. SMART TRACKING: Identify duplicates
         match_cols = ["Time Slot", "Room", "Booked By", "Purpose"]
-        
-        # Create a mapping dictionary of { original_date_key: new_date }
         reschedule_map = {}
         
-        # Find groups where the same meeting exists more than once
         grouped = display_board[display_board["Status"].str.lower() == "confirmed"].groupby(match_cols)
         for specs, group in grouped:
             if len(group) > 1:
-                # Sort group by date so the earliest date comes first
                 sorted_group = group.sort_values("Date")
                 latest_date = sorted_group.iloc[-1]["Date"]
-                
-                # Mark all earlier dates as rescheduled to the latest date
                 for idx, row in sorted_group.iloc[:-1].iterrows():
                     reschedule_map[idx] = latest_date
 
-        # 3. Dynamic row renderer
+        # --- FILTER: Drop the old rows from the dataframe before rendering ---
+        display_board = display_board.drop(index=reschedule_map.keys())
+
+        # 3. Dynamic row renderer (Clean display)
         def format_row(row):
-            idx = row.name
             status = str(row["Status"]).strip().lower()
             purpose_text = str(row["Purpose"])
             row_date = str(row["Date"])
 
-            # Check Condition A: Frontend Smart Matcher caught it
-            if idx in reschedule_map:
-                target_date = reschedule_map[idx]
-                return {
-                    "Date": f"~~{row_date}~~", 
-                    "Time Slot": f"~~{row['Time Slot']}~~", 
-                    "Room": f"~~{row['Room']}~~", 
-                    "Booked By": f"~~{row['Booked By']}~~", 
-                    "Purpose": purpose_text, 
-                    "Status/Notes": f"🔄 Rescheduled to {target_date}"
-                }
-
-            # Check Condition B: Fallback explicit backend text tag 
             if "[RESCHED_TO:" in purpose_text:
-                target_date = purpose_text.split("[RESCHED_TO:")[1].replace("]", "").strip()
-                try:
-                    if "/" in target_date:
-                        target_date = datetime.strptime(target_date, "%d/%m/%Y").strftime("%Y-%m-%d")
-                except: pass
                 clean_purpose = purpose_text.split(" [RESCHED_TO:")[0]
                 return {
-                    "Date": f"~~{row_date}~~", 
-                    "Time Slot": f"~~{row['Time Slot']}~~", 
-                    "Room": f"~~{row['Room']}~~", 
-                    "Booked By": f"~~{row['Booked By']}~~", 
-                    "Purpose": clean_purpose, 
-                    "Status/Notes": f"🔄 Rescheduled to {target_date}"
+                    "Date": row_date, "Time Slot": row["Time Slot"], "Room": row["Room"],
+                    "Booked By": row["Booked By"], "Purpose": clean_purpose, "Status/Notes": "🟢 Active & Secured"
                 }
 
-            # Check Condition C: General Cancellations
             if status == "cancelled":
                 return {
-                    "Date": f"~~{row_date}~~", 
-                    "Time Slot": f"~~{row['Time Slot']}~~", 
-                    "Room": f"~~{row['Room']}~~", 
-                    "Booked By": f"~~{row['Booked By']}~~", 
-                    "Purpose": purpose_text, 
-                    "Status/Notes": "❌ Cancelled & Now Open"
+                    "Date": f"~~{row_date}~~", "Time Slot": f"~~{row['Time Slot']}~~", "Room": f"~~{row['Room']}~~",
+                    "Booked By": f"~~{row['Booked By']}~~", "Purpose": purpose_text, "Status/Notes": "❌ Cancelled & Now Open"
                 }
                 
-            # Default: Confirmed Active Booking
             return {
-                "Date": row_date, 
-                "Time Slot": row["Time Slot"], 
-                "Room": row["Room"], 
-                "Booked By": row["Booked By"], 
-                "Purpose": purpose_text, 
-                "Status/Notes": "🟢 Active & Secured"
+                "Date": row_date, "Time Slot": row["Time Slot"], "Room": row["Room"],
+                "Booked By": row["Booked By"], "Purpose": purpose_text, "Status/Notes": "🟢 Active & Secured"
             }
                 
         formatted_data = display_board.apply(format_row, axis=1, result_type="expand")
-        
-        # Display clean uniform columns
         st.dataframe(
             formatted_data[["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status/Notes"]], 
-            use_container_width=True, 
-            hide_index=True
+            use_container_width=True, hide_index=True
         )
     else:
         st.info("No active schedules booked for today onwards.")
