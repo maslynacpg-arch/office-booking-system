@@ -337,53 +337,49 @@ st.markdown("---")
 st.subheader("📋 Active Schedule Table Feed")
 
 if not df_bookings.empty:
-    # 1. Standardize and filter data
     display_board = df_bookings.copy()
+    display_board = display_board[~display_board["Date"].apply(is_past_date)]
     
-    # Force YYYY-MM-DD conversion
-    def format_date_column(d):
-        try:
-            # If already YYYY-MM-DD, keep it. If DD/MM/YYYY, convert it.
-            if "/" in str(d):
-                return datetime.strptime(str(d), "%d/%m/%Y").strftime("%Y-%m-%d")
-            return str(d)
-        except: return str(d)
-        
-    display_board["Date"] = display_board["Date"].apply(format_date_column)
-    
-    # Filter out past dates (using YYYY-MM-DD format)
-    today_str = datetime.today().strftime("%Y-%m-%d")
-    display_board = display_board[display_board["Date"] >= today_str]
-
-    # 2. Dynamic Labeling Logic
-    def format_row(row):
-        purpose_text = str(row["Purpose"])
-        status = str(row["Status"]).strip().lower()
-        
-        # Check for Reschedule Tag
-        if "[RESCHED_TO:" in purpose_text:
-        target_date = purpose_text.split("[RESCHED_TO:")[1].replace("]", "").strip()
-        return {**row, "Status/Notes": f"🔄 Rescheduled to {target_date}"}
-            # If target_date is DD/MM/YYYY, format it to YYYY-MM-DD for consistency
-            try:
-                formatted_target = datetime.strptime(target_date, "%d/%m/%Y").strftime("%Y-%m-%d")
-            except:
-                formatted_target = target_date
-            return {**row, "Status/Notes": f"🔄 Rescheduled to {formatted_target}"}
-        
-        # Check for Cancelled
-        if status == "cancelled":
-            return {**row, "Status/Notes": "❌ Cancelled & Now Open"}
+    if not display_board.empty:
+        def format_row(row):
+            status = str(row["Status"]).strip().lower()
+            purpose_text = str(row["Purpose"])
             
-        # Default Active
-        return {**row, "Status/Notes": "🟢 Active & Secured"}
-
-    # 3. Apply formatting and display
-    formatted_data = display_board.apply(format_row, axis=1, result_type="expand")
-    st.dataframe(
-        formatted_data[["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status/Notes"]], 
-        use_container_width=True, 
-        hide_index=True
-    )
+            if status == "cancelled":
+                # Check if it contains our hidden reschedule tag
+                if "[RESCHED_TO:" in purpose_text:
+                    target_date = purpose_text.split("[RESCHED_TO:")[1].replace("]", "")
+                    clean_purpose = purpose_text.split(" [RESCHED_TO:")[0]
+                    return {
+                        "Date": f"~~{row['Date']}~~", 
+                        "Time Slot": f"~~{row['Time Slot']}~~", 
+                        "Room": f"~~{row['Room']}~~", 
+                        "Booked By": f"~~{row['Booked By']}~~", 
+                        "Purpose": clean_purpose, 
+                        "Status/Notes": f"🔄 Rescheduled to {target_date}"
+                    }
+                else:
+                    return {
+                        "Date": f"~~{row['Date']}~~", 
+                        "Time Slot": f"~~{row['Time Slot']}~~", 
+                        "Room": f"~~{row['Room']}~~", 
+                        "Booked By": f"~~{row['Booked By']}~~", 
+                        "Purpose": row["Purpose"], 
+                        "Status/Notes": "❌ Cancelled & Now Open"
+                    }
+            return {
+                "Date": row["Date"], 
+                "Time Slot": row["Time Slot"], 
+                "Room": row["Room"], 
+                "Booked By": row["Booked By"], 
+                "Purpose": row["Purpose"], 
+                "Status/Notes": "🟢 Active & Secured"
+            }
+                
+        formatted_data = display_board.apply(format_row, axis=1, result_type="expand")
+        st.dataframe(formatted_data[["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status/Notes"]], use_container_width=True, hide_index=True)
+    else:
+        st.info("No active schedules booked for today onwards.")
 else:
     st.info("System database is empty.")
+
