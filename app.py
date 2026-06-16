@@ -338,23 +338,29 @@ st.subheader("📋 Active Schedule Table Feed")
 if not df_bookings.empty:
     display_board = df_bookings.copy()
     
-    # 1. Standardize all dates to YYYY-MM-DD immediately
-    def clean_date_format(d):
-        try:
-            d_str = str(d).strip()
-            if "/" in d_str:
-                return datetime.strptime(d_str, "%d/%m/%Y").strftime("%Y-%m-%d")
-            return datetime.strptime(d_str, "%Y-%m-%d").strftime("%Y-%m-%d")
-        except:
-            return str(d)
-            
-    display_board["Date"] = display_board["Date"].apply(clean_date_format)
+    # 1. Standardize all dates to YYYY-MM-DD object format safely
+    def normalize_to_date_obj(d):
+        d_str = str(d).strip()
+        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y"):
+            try:
+                return datetime.strptime(d_str, fmt).date()
+            except ValueError:
+                continue
+        return None
+
+    # Apply strict conversion to a temporary parsing column
+    display_board["_parsed_date"] = display_board["Date"].apply(normalize_to_date_obj)
     
-    # --- CRITICAL FIX: Filter out past dates right here before formatting ---
-    display_board = display_board[~display_board["Date"].apply(is_past_date)]
+    # Drop rows where parsing failed or dates that are explicitly in the past
+    today = datetime.now().date()
+    display_board = display_board.dropna(subset=["_parsed_date"])
+    display_board = display_board[display_board["_parsed_date"] >= today]
     
+    # Rewrite the 'Date' column to be uniformly displayable as YYYY-MM-DD string
+    display_board["Date"] = display_board["_parsed_date"].astype(str)
+
     if not display_board.empty:
-        # 2. SMART TRACKING: Match rescheduled entries
+        # 2. SMART TRACKING: Match rescheduled entries within upcoming dates
         match_cols = ["Time Slot", "Room", "Booked By", "Purpose"]
         reschedule_map = {}
         
@@ -392,8 +398,9 @@ if not df_bookings.empty:
             if "[RESCHED_TO:" in purpose_text:
                 target_date = purpose_text.split("[RESCHED_TO:")[1].replace("]", "").strip()
                 try:
-                    if "/" in target_date:
-                        target_date = datetime.strptime(target_date, "%d/%m/%Y").strftime("%Y-%m-%d")
+                    target_date_obj = normalize_to_date_obj(target_date)
+                    if target_date_obj:
+                        target_date = target_date_obj.strftime("%Y-%m-%d")
                 except: pass
                 clean_purpose = purpose_text.split(" [RESCHED_TO:")[0]
                 return {
