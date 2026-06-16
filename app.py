@@ -341,14 +341,15 @@ if not df_bookings.empty:
     display_board = display_board[~display_board["Date"].apply(is_past_date)]
     
     if not display_board.empty:
+        # UPDATED: Robust Logic for Dynamic Labels
         def format_row(row):
             status = str(row["Status"]).strip().lower()
             purpose_text = str(row["Purpose"])
             
-            if status == "cancelled":
-                # Check if it contains our hidden reschedule tag
-                if "[RESCHED_TO:" in purpose_text:
-                    target_date = purpose_text.split("[RESCHED_TO:")[1].replace("]", "")
+            # 1. High-priority check: Look for the reschedule tag first
+            if "[RESCHED_TO:" in purpose_text:
+                try:
+                    target_date = purpose_text.split("[RESCHED_TO:")[1].replace("]", "").strip()
                     clean_purpose = purpose_text.split(" [RESCHED_TO:")[0]
                     return {
                         "Date": f"~~{row['Date']}~~", 
@@ -358,15 +359,21 @@ if not df_bookings.empty:
                         "Purpose": clean_purpose, 
                         "Status/Notes": f"🔄 Rescheduled to {target_date}"
                     }
-                else:
-                    return {
-                        "Date": f"~~{row['Date']}~~", 
-                        "Time Slot": f"~~{row['Time Slot']}~~", 
-                        "Room": f"~~{row['Room']}~~", 
-                        "Booked By": f"~~{row['Booked By']}~~", 
-                        "Purpose": row["Purpose"], 
-                        "Status/Notes": "❌ Cancelled & Now Open"
-                    }
+                except Exception:
+                    pass # Fallback to standard if parsing fails
+            
+            # 2. Check for Cancelled
+            if status == "cancelled":
+                return {
+                    "Date": f"~~{row['Date']}~~", 
+                    "Time Slot": f"~~{row['Time Slot']}~~", 
+                    "Room": f"~~{row['Room']}~~", 
+                    "Booked By": f"~~{row['Booked By']}~~", 
+                    "Purpose": row["Purpose"], 
+                    "Status/Notes": "❌ Cancelled & Now Open"
+                }
+            
+            # 3. Default Active
             return {
                 "Date": row["Date"], 
                 "Time Slot": row["Time Slot"], 
@@ -376,10 +383,14 @@ if not df_bookings.empty:
                 "Status/Notes": "🟢 Active & Secured"
             }
                 
+        # CRITICAL: result_type="expand" converts the dictionary return into new columns
         formatted_data = display_board.apply(format_row, axis=1, result_type="expand")
-        st.dataframe(formatted_data[["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status/Notes"]], use_container_width=True, hide_index=True)
+        st.dataframe(
+            formatted_data[["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status/Notes"]], 
+            use_container_width=True, 
+            hide_index=True
+        )
     else:
         st.info("No active schedules booked for today onwards.")
 else:
     st.info("System database is empty.")
-
