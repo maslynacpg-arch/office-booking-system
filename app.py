@@ -99,7 +99,7 @@ with tab1:
         room_active = pd.DataFrame()
         if not df_bookings.empty and "Status" in df_bookings.columns:
             room_active = df_bookings[
-                ((df_bookings["Date"] == date_str) | (df_bookings["Date"] == selected_date.strftime("%Y-%m-%d"))) & 
+                ((df_bookings["Date"] == date_str) | (df_bookings["Date"] == selected_date.strftime("%Y/%m/%d"))) & 
                 (df_bookings["Room"] == room) & 
                 (df_bookings["Status"].str.lower() == "confirmed")
             ]
@@ -181,7 +181,7 @@ with tab1:
                 is_clashed = False
                 if not df_bookings.empty and "Status" in df_bookings.columns:
                     existing_room_bookings = df_bookings[
-                        ((df_bookings["Date"] == date_str) | (df_bookings["Date"] == selected_date.strftime("%Y-%m-%d"))) & 
+                        ((df_bookings["Date"] == date_str) | (df_bookings["Date"] == selected_date.strftime("%Y/%m/%d"))) & 
                         (df_bookings["Room"] == selected_room) & 
                         (df_bookings["Status"].str.lower() == "confirmed")
                     ]
@@ -276,7 +276,7 @@ with tab3:
                     is_clashed = False
                     if not df_bookings.empty and "Status" in df_bookings.columns:
                         clash_filter = df_bookings[
-                            ((df_bookings["Date"] == new_date_str) | (df_bookings["Date"] == new_date.strftime("%Y-%m-%d"))) & 
+                            ((df_bookings["Date"] == new_date_str) | (df_bookings["Date"] == new_date.strftime("%Y/%m/%d"))) & 
                             (df_bookings["Room"] == new_room) & 
                             (df_bookings["Status"].str.lower() == "confirmed")
                         ]
