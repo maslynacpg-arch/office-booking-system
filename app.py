@@ -338,73 +338,100 @@ st.subheader("📋 Active Schedule Table Feed")
 if not df_bookings.empty:
     display_board = df_bookings.copy()
     
-    # Custom filter logic: Keep row if it's NOT a past date OR if it contains a reschedule tag
-    def should_keep_row(row):
-        is_past = is_past_date(str(row["Date"]))
-        has_resched = "[RESCHED_TO:" in str(row["Purpose"])
-        return (not is_past) or has_resched
-
-    display_board = display_board[display_board.apply(should_keep_row, axis=1)]
+    # 1. Standardize all dates to YYYY-MM-DD for reliable sorting and matching
+    def clean_date_format(d):
+        try:
+            if "/" in str(d):
+                return datetime.strptime(str(d), "%d/%m/%Y").strftime("%Y-%m-%d")
+            return datetime.strptime(str(d), "%Y-%m-%d").strftime("%Y-%m-%d")
+        except:
+            return str(d)
+            
+    display_board["Date"] = display_board["Date"].apply(clean_date_format)
+    
+    # Filter out past dates using our helper
+    display_board = display_board[~display_board["Date"].apply(is_past_date)]
     
     if not display_board.empty:
+        # 2. SMART TRACKING: Identify duplicates rescheduled on the frontend
+        # Group by identical appointment traits to find multiple dates
+        match_cols = ["Time Slot", "Room", "Booked By", "Purpose"]
+        
+        # Create a mapping dictionary of { original_date_key: new_date }
+        reschedule_map = {}
+        
+        # Find groups where the same meeting exists more than once
+        grouped = display_board[display_board["Status"].str.lower() == "confirmed"].groupby(match_cols)
+        for specs, group in grouped:
+            if len(group) > 1:
+                # Sort group by date so the earliest date comes first
+                sorted_group = group.sort_values("Date")
+                latest_date = sorted_group.iloc[-1]["Date"]
+                
+                # Mark all earlier dates as rescheduled to the latest date
+                for idx, row in sorted_group.iloc[:-1].iterrows():
+                    reschedule_map[idx] = latest_date
+
+        # 3. Dynamic row renderer
         def format_row(row):
+            idx = row.name
             status = str(row["Status"]).strip().lower()
             purpose_text = str(row["Purpose"])
-            
-            # Standardize Current Row Date to YYYY-MM-DD
-            try:
-                if "/" in str(row["Date"]):
-                    row_date_clean = datetime.strptime(str(row["Date"]), "%d/%m/%Y").strftime("%Y-%m-%d")
-                else:
-                    row_date_clean = datetime.strptime(str(row["Date"]), "%Y-%m-%d").strftime("%Y-%m-%d")
-            except:
-                row_date_clean = str(row["Date"])
+            row_date = str(row["Date"])
 
-            # Check for reschedule keyword regardless of lowercase/uppercase status
+            # Check Condition A: Frontend Smart Matcher caught it
+            if idx in reschedule_map:
+                target_date = reschedule_map[idx]
+                return {
+                    "Date": f"~~{row_date}~~", 
+                    "Time Slot": f"~~{row['Time Slot']}~~", 
+                    "Room": f"~~{row['Room']}~~", 
+                    "Booked By": f"~~{row['Booked By']}~~", 
+                    "Purpose": purpose_text, 
+                    "Status/Notes": f"🔄 Rescheduled to {target_date}"
+                }
+
+            # Check Condition B: Fallback explicit backend text tag 
             if "[RESCHED_TO:" in purpose_text:
                 target_date = purpose_text.split("[RESCHED_TO:")[1].replace("]", "").strip()
-                
-                # Standardize Target Date to YYYY-MM-DD
                 try:
                     if "/" in target_date:
-                        target_date_clean = datetime.strptime(target_date, "%d/%m/%Y").strftime("%Y-%m-%d")
-                    else:
-                        target_date_clean = datetime.strptime(target_date, "%Y-%m-%d").strftime("%Y-%m-%d")
-                except:
-                    target_date_clean = target_date
-
+                        target_date = datetime.strptime(target_date, "%d/%m/%Y").strftime("%Y-%m-%d")
+                except: pass
                 clean_purpose = purpose_text.split(" [RESCHED_TO:")[0]
                 return {
-                    "Date": f"~~{row_date_clean}~~", 
+                    "Date": f"~~{row_date}~~", 
                     "Time Slot": f"~~{row['Time Slot']}~~", 
                     "Room": f"~~{row['Room']}~~", 
                     "Booked By": f"~~{row['Booked By']}~~", 
                     "Purpose": clean_purpose, 
-                    "Status/Notes": f"🔄 Rescheduled to {target_date_clean}"
+                    "Status/Notes": f"🔄 Rescheduled to {target_date}"
                 }
 
+            # Check Condition C: General Cancellations
             if status == "cancelled":
                 return {
-                    "Date": f"~~{row_date_clean}~~", 
+                    "Date": f"~~{row_date}~~", 
                     "Time Slot": f"~~{row['Time Slot']}~~", 
                     "Room": f"~~{row['Room']}~~", 
                     "Booked By": f"~~{row['Booked By']}~~", 
-                    "Purpose": row["Purpose"], 
+                    "Purpose": purpose_text, 
                     "Status/Notes": "❌ Cancelled & Now Open"
                 }
                 
+            # Default: Confirmed Active Booking
             return {
-                "Date": row_date_clean, 
+                "Date": row_date, 
                 "Time Slot": row["Time Slot"], 
                 "Room": row["Room"], 
                 "Booked By": row["Booked By"], 
-                "Purpose": row["Purpose"], 
+                "Purpose": purpose_text, 
                 "Status/Notes": "🟢 Active & Secured"
             }
                 
         formatted_data = display_board.apply(format_row, axis=1, result_type="expand")
         
-        # Ensure correct column order display
+        # Display clean uniform columns
         st.dataframe(
             formatted_data[["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status/Notes"]], 
             use_container_width=True, 
