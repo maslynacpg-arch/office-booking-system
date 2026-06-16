@@ -76,7 +76,7 @@ tab1, tab2, tab3 = st.tabs(["📝 Reserve a Room", "❌ Cancel a Booking", "🔄
 with tab1:
     st.subheader("Visual Schedule Planner")
     selected_date = st.date_input("1. Choose Date:", datetime.today(), key="book_date")
-    date_str = selected_date.strftime("%Y-%m-%d")
+    date_str = selected_date.strftime("%d/%m/%Y")  # Modified to DD/MM/YYYY
     
     st.markdown("### 📊 Interactive Daily Availability Timeline")
     
@@ -201,8 +201,8 @@ with tab2:
     st.subheader("Cancel an Existing Reservation")
     if not df_bookings.empty and "Status" in df_bookings.columns:
         df_active = df_bookings.copy()
-        df_active["Parsed_Date"] = pd.to_datetime(df_active["Date"], errors='coerce')
-        today_date = pd.to_datetime(datetime.today().strftime("%Y-%m-%d"))
+        df_active["Parsed_Date"] = pd.to_datetime(df_active["Date"], format="%d/%m/%Y", errors='coerce')
+        today_date = pd.to_datetime(datetime.today().strftime("%d/%m/%Y"), format="%d/%m/%Y")
         
         active_list = df_active[(df_active["Status"].str.lower() == "confirmed") & (df_active["Parsed_Date"] >= today_date)].copy()
         
@@ -232,8 +232,8 @@ with tab3:
     st.subheader("Reschedule an Existing Booking")
     if not df_bookings.empty and "Status" in df_bookings.columns:
         df_resched = df_bookings.copy()
-        df_resched["Parsed_Date"] = pd.to_datetime(df_resched["Date"], errors='coerce')
-        today_date = pd.to_datetime(datetime.today().strftime("%Y-%m-%d"))
+        df_resched["Parsed_Date"] = pd.to_datetime(df_resched["Date"], format="%d/%m/%Y", errors='coerce')
+        today_date = pd.to_datetime(datetime.today().strftime("%d/%m/%Y"), format="%d/%m/%Y")
         
         resched_list = df_resched[(df_resched["Status"].str.lower() == "confirmed") & (df_resched["Parsed_Date"] >= today_date)].copy()
         
@@ -246,7 +246,7 @@ with tab3:
             st.markdown("### 2. Enter New Allocation Details")
             
             new_date = st.date_input("Choose New Date:", datetime.today(), key="resched_date")
-            new_date_str = new_date.strftime("%Y-%m-%d")
+            new_date_str = new_date.strftime("%d/%m/%Y")  # Modified to DD/MM/YYYY
             new_room = st.radio("Choose New Room Target:", rooms, key="resched_room")
             
             r_col1, r_col2 = st.columns(2)
@@ -273,7 +273,6 @@ with tab3:
                         ]
                         for _, row in clash_filter.iterrows():
                             try:
-                                # Skip checking against itself if it hasn't actually shifted positions
                                 if (selected_meeting_row["Date"] == new_date_str and 
                                     selected_meeting_row["Room"] == new_room and 
                                     selected_meeting_row["Time Slot"] == row["Time Slot"]):
@@ -290,11 +289,9 @@ with tab3:
                     if is_clashed:
                         st.error(f"⚠️ **Schedule Clash!** Already occupied by **{clashed_by}** ({clashed_slot}).")
                     else:
-                        # Process cancellation of the old slot
                         cancel_payload = {"Action": "Cancel", "Date": selected_meeting_row["Date"], "Time_Slot": selected_meeting_row["Time Slot"], "Room": selected_meeting_row["Room"], "Purpose": selected_meeting_row["Purpose"]}
                         res_c = requests.post(st.secrets["SCRIPT_URL"], data=json.dumps(cancel_payload))
                         
-                        # Process creation of the new slot 
                         book_payload = {"Action": "Book", "Date": new_date_str, "Time_Slot": new_time_slot, "Room": new_room, "Booked_By": selected_meeting_row["Booked By"], "Purpose": selected_meeting_row["Purpose"]}
                         res_b = requests.post(st.secrets["SCRIPT_URL"], data=json.dumps(book_payload))
                         
@@ -303,7 +300,8 @@ with tab3:
                             
                             subject = f"🔄 Meeting Rescheduled: {selected_meeting_row['Room']}"
                             body = (
-                                f"Dear Team,\n\nNotice: The meeting detailed below has been rescheduled.\n\n"
+                                f"Dear Team,\n\n"
+                                f"Notice: The meeting detailed below has been rescheduled.\n\n"
                                 f"🗓️ Previous Details:\n"
                                 f"❌ Date/Time: {selected_meeting_row['Date']} ({selected_meeting_row['Time Slot']})\n"
                                 f"❌ Room Location: {selected_meeting_row['Room']}\n\n"
@@ -328,8 +326,8 @@ st.subheader("📋 Active Schedule Table Feed (Today & Upcoming)")
 
 if not df_bookings.empty and "Status" in df_bookings.columns:
     display_board = df_bookings.copy()
-    display_board["Parsed_Date"] = pd.to_datetime(display_board["Date"], errors='coerce')
-    today_date = pd.to_datetime(datetime.today().strftime("%Y-%m-%d"))
+    display_board["Parsed_Date"] = pd.to_datetime(display_board["Date"], format="%d/%m/%Y", errors='coerce')
+    today_date = pd.to_datetime(datetime.today().strftime("%d/%m/%Y"), format="%d/%m/%Y")
     
     display_board = display_board[display_board["Parsed_Date"] >= today_date]
     display_board = display_board.sort_values(by=["Parsed_Date", "Time Slot"])
