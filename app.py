@@ -70,6 +70,24 @@ for hour in range(8, 19):
 # 5. CREATE THE TABS SYSTEM
 tab1, tab2, tab3 = st.tabs(["📝 Reserve a Room", "❌ Cancel a Booking", "🔄 Reschedule a Booking"])
 
+# Get current date info for filtering out past dates
+today_obj = datetime.today()
+today_str = today_obj.strftime("%d/%m/%Y")
+
+# Helper function to check if a date string is past due
+def is_past_date(date_string):
+    try:
+        # Standardize hyphens to slashes if old data exists
+        clean_date = date_string.replace("-", "/")
+        # Parse based on format length to support both styles seamlessly
+        if len(clean_date.split('/')[0]) == 4:
+            booking_date = datetime.strptime(clean_date, "%Y/%m/%d")
+        else:
+            booking_date = datetime.strptime(clean_date, "%d/%m/%Y")
+        return booking_date.date() < today_obj.date()
+    except Exception:
+        return False # Fallback to show it if parsing completely fails
+
 # ==========================================
 # TAB 1: VISUAL GRID TIMELINE INTERFACE
 # ==========================================
@@ -84,7 +102,7 @@ with tab1:
         room_active = pd.DataFrame()
         if not df_bookings.empty and "Status" in df_bookings.columns:
             room_active = df_bookings[
-                (df_bookings["Date"] == date_str) & 
+                ((df_bookings["Date"] == date_str) | (df_bookings["Date"] == selected_date.strftime("%Y-%m-%d"))) & 
                 (df_bookings["Room"] == room) & 
                 (df_bookings["Status"].str.lower() == "confirmed")
             ]
@@ -166,7 +184,7 @@ with tab1:
                 is_clashed = False
                 if not df_bookings.empty and "Status" in df_bookings.columns:
                     existing_room_bookings = df_bookings[
-                        (df_bookings["Date"] == date_str) & 
+                        ((df_bookings["Date"] == date_str) | (df_bookings["Date"] == selected_date.strftime("%Y-%m-%d"))) & 
                         (df_bookings["Room"] == selected_room) & 
                         (df_bookings["Status"].str.lower() == "confirmed")
                     ]
@@ -202,6 +220,9 @@ with tab2:
     if not df_bookings.empty and "Status" in df_bookings.columns:
         active_list = df_bookings[df_bookings["Status"].str.lower() == "confirmed"].copy()
         
+        # REMOVE PAST DUE DATES
+        active_list = active_list[~active_list["Date"].apply(is_past_date)]
+        
         if not active_list.empty:
             active_list["Display_Text"] = active_list["Date"] + " | " + active_list["Time Slot"] + " | " + active_list["Room"] + " (" + active_list["Booked By"] + ")"
             cancel_selection = st.selectbox("Select booking to release:", active_list["Display_Text"].tolist(), key="cancel_select")
@@ -228,6 +249,9 @@ with tab3:
     st.subheader("Reschedule an Existing Booking")
     if not df_bookings.empty and "Status" in df_bookings.columns:
         resched_list = df_bookings[df_bookings["Status"].str.lower() == "confirmed"].copy()
+        
+        # REMOVE PAST DUE DATES
+        resched_list = resched_list[~resched_list["Date"].apply(is_past_date)]
         
         if not resched_list.empty:
             resched_list["Display_Text"] = resched_list["Date"] + " | " + resched_list["Time Slot"] + " | " + resched_list["Room"] + " (" + resched_list["Booked By"] + ")"
@@ -259,13 +283,13 @@ with tab3:
                     is_clashed = False
                     if not df_bookings.empty and "Status" in df_bookings.columns:
                         clash_filter = df_bookings[
-                            (df_bookings["Date"] == new_date_str) & 
+                            ((df_bookings["Date"] == new_date_str) | (df_bookings["Date"] == new_date.strftime("%Y-%m-%d"))) & 
                             (df_bookings["Room"] == new_room) & 
                             (df_bookings["Status"].str.lower() == "confirmed")
                         ]
                         for _, row in clash_filter.iterrows():
                             try:
-                                if (selected_meeting_row["Date"] == new_date_str and 
+                                if (selected_meeting_row["Date"] == row["Date"] and 
                                     selected_meeting_row["Room"] == new_room and 
                                     selected_meeting_row["Time Slot"] == row["Time Slot"]):
                                     continue
@@ -290,7 +314,6 @@ with tab3:
                         if res_b.status_code == 200:
                             st.success("🔄 Booking successfully rescheduled!")
                             
-                            # Typo fixed here (changed from 'active' references to 'selected_meeting_row')
                             subject = f"🔄 Meeting Rescheduled: {selected_meeting_row['Room']}"
                             body = (
                                 f"Dear Team,\n\n"
@@ -320,12 +343,18 @@ st.subheader("📋 Active Schedule Table Feed")
 if not df_bookings.empty:
     display_board = df_bookings.copy()
     
-    def format_row(row):
-        if str(row["Status"]).strip().lower() == "cancelled":
-            return {"Date": f"~~{row['Date']}~~", "Time Slot": f"~~{row['Time Slot']}~~", "Room": f"~~{row['Room']}~~", "Booked By": f"~~{row['Booked By']}~~", "Purpose": f"~~{row['Purpose']}~~", "Status/Notes": "❌ Cancelled & Now Open"}
-        return {"Date": row["Date"], "Time Slot": row["Time Slot"], "Room": row["Room"], "Booked By": row["Booked By"], "Purpose": row["Purpose"], "Status/Notes": "🟢 Active & Secured"}
-            
-    formatted_data = display_board.apply(format_row, axis=1, result_type="expand")
-    st.dataframe(formatted_data[["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status/Notes"]], use_container_width=True, hide_index=True)
+    # FILTER OUT PAST MEETINGS FROM DASHBOARD
+    display_board = display_board[~display_board["Date"].apply(is_past_date)]
+    
+    if not display_board.empty:
+        def format_row(row):
+            if str(row["Status"]).strip().lower() == "cancelled":
+                return {"Date": f"~~{row['Date']}~~", "Time Slot": f"~~{row['Time Slot']}~~", "Room": f"~~{row['Room']}~~", "Booked By": f"~~{row['Booked By']}~~", "Purpose": f"~~{row['Purpose']}~~", "Status/Notes": "❌ Cancelled & Now Open"}
+            return {"Date": row["Date"], "Time Slot": row["Time Slot"], "Room": row["Room"], "Booked By": row["Booked By"], "Purpose": row["Purpose"], "Status/Notes": "🟢 Active & Secured"}
+                
+        formatted_data = display_board.apply(format_row, axis=1, result_type="expand")
+        st.dataframe(formatted_data[["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status/Notes"]], use_container_width=True, hide_index=True)
+    else:
+        st.info("No active schedules booked for today onwards.")
 else:
     st.info("System database is empty.")
