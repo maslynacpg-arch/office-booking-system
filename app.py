@@ -337,14 +337,21 @@ st.subheader("📋 Active Schedule Table Feed")
 
 if not df_bookings.empty:
     display_board = df_bookings.copy()
-    display_board = display_board[~display_board["Date"].apply(is_past_date)]
+    
+    # Custom filter logic: Keep row if it's NOT a past date OR if it contains a reschedule tag
+    def should_keep_row(row):
+        is_past = is_past_date(str(row["Date"]))
+        has_resched = "[RESCHED_TO:" in str(row["Purpose"])
+        return (not is_past) or has_resched
+
+    display_board = display_board[display_board.apply(should_keep_row, axis=1)]
     
     if not display_board.empty:
         def format_row(row):
             status = str(row["Status"]).strip().lower()
             purpose_text = str(row["Purpose"])
             
-            # --- ADJUSTMENT 2: STANDARDIZE CURRENT ROW DATE TO YYYY-MM-DD ---
+            # Standardize Current Row Date to YYYY-MM-DD
             try:
                 if "/" in str(row["Date"]):
                     row_date_clean = datetime.strptime(str(row["Date"]), "%d/%m/%Y").strftime("%Y-%m-%d")
@@ -353,37 +360,39 @@ if not df_bookings.empty:
             except:
                 row_date_clean = str(row["Date"])
 
-            if status == "cancelled":
-                if "[RESCHED_TO:" in purpose_text:
-                    target_date = purpose_text.split("[RESCHED_TO:")[1].replace("]", "").strip()
-                    
-                    # --- ADJUSTMENT 3: STANDARDIZE TARGET DATE TO YYYY-MM-DD ---
-                    try:
-                        if "/" in target_date:
-                            target_date_clean = datetime.strptime(target_date, "%d/%m/%Y").strftime("%Y-%m-%d")
-                        else:
-                            target_date_clean = datetime.strptime(target_date, "%Y-%m-%d").strftime("%Y-%m-%d")
-                    except:
-                        target_date_clean = target_date
+            # Check for reschedule keyword regardless of lowercase/uppercase status
+            if "[RESCHED_TO:" in purpose_text:
+                target_date = purpose_text.split("[RESCHED_TO:")[1].replace("]", "").strip()
+                
+                # Standardize Target Date to YYYY-MM-DD
+                try:
+                    if "/" in target_date:
+                        target_date_clean = datetime.strptime(target_date, "%d/%m/%Y").strftime("%Y-%m-%d")
+                    else:
+                        target_date_clean = datetime.strptime(target_date, "%Y-%m-%d").strftime("%Y-%m-%d")
+                except:
+                    target_date_clean = target_date
 
-                    clean_purpose = purpose_text.split(" [RESCHED_TO:")[0]
-                    return {
-                        "Date": f"~~{row_date_clean}~~", 
-                        "Time Slot": f"~~{row['Time Slot']}~~", 
-                        "Room": f"~~{row['Room']}~~", 
-                        "Booked By": f"~~{row['Booked By']}~~", 
-                        "Purpose": clean_purpose, 
-                        "Status/Notes": f"🔄 Rescheduled to {target_date_clean}"
-                    }
-                else:
-                    return {
-                        "Date": f"~~{row_date_clean}~~", 
-                        "Time Slot": f"~~{row['Time Slot']}~~", 
-                        "Room": f"~~{row['Room']}~~", 
-                        "Booked By": f"~~{row['Booked By']}~~", 
-                        "Purpose": row["Purpose"], 
-                        "Status/Notes": "❌ Cancelled & Now Open"
-                    }
+                clean_purpose = purpose_text.split(" [RESCHED_TO:")[0]
+                return {
+                    "Date": f"~~{row_date_clean}~~", 
+                    "Time Slot": f"~~{row['Time Slot']}~~", 
+                    "Room": f"~~{row['Room']}~~", 
+                    "Booked By": f"~~{row['Booked By']}~~", 
+                    "Purpose": clean_purpose, 
+                    "Status/Notes": f"🔄 Rescheduled to {target_date_clean}"
+                }
+
+            if status == "cancelled":
+                return {
+                    "Date": f"~~{row_date_clean}~~", 
+                    "Time Slot": f"~~{row['Time Slot']}~~", 
+                    "Room": f"~~{row['Room']}~~", 
+                    "Booked By": f"~~{row['Booked By']}~~", 
+                    "Purpose": row["Purpose"], 
+                    "Status/Notes": "❌ Cancelled & Now Open"
+                }
+                
             return {
                 "Date": row_date_clean, 
                 "Time Slot": row["Time Slot"], 
@@ -394,7 +403,13 @@ if not df_bookings.empty:
             }
                 
         formatted_data = display_board.apply(format_row, axis=1, result_type="expand")
-        st.dataframe(formatted_data[["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status/Notes"]], use_container_width=True, hide_index=True)
+        
+        # Ensure correct column order display
+        st.dataframe(
+            formatted_data[["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status/Notes"]], 
+            use_container_width=True, 
+            hide_index=True
+        )
     else:
         st.info("No active schedules booked for today onwards.")
 else:
