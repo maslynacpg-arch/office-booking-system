@@ -121,7 +121,6 @@ with tab1:
     
     st.markdown("### 📊 Interactive Daily Availability Timeline")
     
-    # Pre-filter out hidden/old rescheduled rows so timeline reflects empty slots instantly!
     cleaned_active_df = get_active_validations_df(df_bookings)
     
     for room in rooms:
@@ -235,7 +234,24 @@ with tab1:
                     response = requests.post(st.secrets["SCRIPT_URL"], data=json.dumps(payload))
                     if response.status_code == 200:
                         st.success("🎉 Booking recorded successfully!")
-                        send_email_alert(f"📢 Workspace Secured: {selected_room} ({date_str})", f"Details:\nRoom: {selected_room}\nBy: {name}\nTime: {custom_time_slot}\nAgenda: {meeting_purpose}")
+                        
+                        # --- UPDATED STYLED EMAIL TEMPLATE FOR TAB 1 ---
+                        subject = f"📢 Workspace Secured: {selected_room} ({date_str})"
+                        body = (
+                            f"Dear Team,\n\n"
+                            f"Please note that the following workspace has been secured\n"
+                            f"for an upcoming session.\n\n"
+                            f"📋 Reservation Details:\n"
+                            f"📍 Workspace: {selected_room}\n"
+                            f"👤 Reserved By: {name}\n"
+                            f"📅 Session Date: {date_str}\n"
+                            f"⏰ Time Window: {custom_time_slot}\n"
+                            f"📝 Session Agenda: {meeting_purpose}\n\n"
+                            f"---\n"
+                            f"This is a system-generated notification. Please do not\n"
+                            f"reply directly to this email."
+                        )
+                        send_email_alert(subject, body)
                         st.balloons()
                         time.sleep(1.5)
                         st.rerun()
@@ -271,7 +287,7 @@ with tab2:
         else: st.info("No active upcoming bookings to release.")
 
 # ==========================================
-# TAB 3: RESCHEDULE SYSTEM (WITH SMART LABELS)
+# TAB 3: RESCHEDULE SYSTEM
 # ==========================================
 with tab3:
     st.subheader("Reschedule an Existing Booking")
@@ -342,18 +358,21 @@ with tab3:
                         if res_b.status_code == 200:
                             st.success("🔄 Booking successfully rescheduled!")
                             
-                            subject = f"🔄 Meeting Rescheduled: {selected_meeting_row['Room']}"
+                            # --- MATCHING STYLED EMAIL TEMPLATE FOR TAB 3 ---
+                            subject = f"🔄 Meeting Rescheduled: {new_room} ({new_date_str})"
                             body = (
                                 f"Dear Team,\n\n"
-                                f"Notice: The meeting detailed below has been rescheduled.\n\n"
-                                f"🗓️ Previous Details:\n"
-                                f"❌ Date/Time: {selected_meeting_row['Date']} ({selected_meeting_row['Time Slot']})\n"
-                                f"❌ Room Location: {selected_meeting_row['Room']}\n\n"
-                                f"✨ Updated Details:\n"
-                                f"✅ New Date/Time: {new_date_str} ({new_time_slot})\n"
-                                f"✅ New Room Location: {new_room}\n"
-                                f"👤 Booker: {selected_meeting_row['Booked By']}\n"
-                                f"📝 Purpose: {selected_meeting_row['Purpose']}\n"
+                                f"Please note that the following workspace has been secured\n"
+                                f"for an upcoming rescheduled session.\n\n"
+                                f"📋 Reservation Details:\n"
+                                f"📍 Workspace: {new_room}\n"
+                                f"👤 Reserved By: {selected_meeting_row['Booked By']}\n"
+                                f"📅 Session Date: {new_date_str}\n"
+                                f"⏰ Time Window: {new_time_slot}\n"
+                                f"📝 Session Agenda: {selected_meeting_row['Purpose']}\n\n"
+                                f"---\n"
+                                f"This is a system-generated notification. Please do not\n"
+                                f"reply directly to this email."
                             )
                             send_email_alert(subject, body)
                             time.sleep(1.5)
@@ -371,7 +390,6 @@ st.subheader("📋 Active Schedule Table Feed")
 if not df_bookings.empty:
     display_board = df_bookings.copy()
     
-    # 1. Standardize all dates to YYYY-MM-DD object format safely
     def normalize_to_date_obj(d):
         d_str = str(d).strip()
         for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y"):
@@ -381,41 +399,30 @@ if not df_bookings.empty:
                 continue
         return None
 
-    # Apply strict conversion to a temporary parsing column
     display_board["_parsed_date"] = display_board["Date"].apply(normalize_to_date_obj)
-    
-    # Drop rows where parsing failed or dates that are explicitly in the past
     today = datetime.now().date()
     display_board = display_board.dropna(subset=["_parsed_date"])
     display_board = display_board[display_board["_parsed_date"] >= today]
-    
-    # Rewrite the 'Date' column to be uniformly displayable as YYYY-MM-DD string
     display_board["Date"] = display_board["_parsed_date"].astype(str)
 
     if not display_board.empty:
-        # 2. SMART TRACKING: Match rescheduled entries within upcoming dates
         match_cols = ["Time Slot", "Room", "Booked By", "Purpose"]
         reschedule_map = {}
         
-        # Find active duplicate groups within current/future dates
         grouped = display_board[display_board["Status"].str.lower() == "confirmed"].groupby(match_cols)
         for specs, group in grouped:
             if len(group) > 1:
                 sorted_group = group.sort_values("Date")
                 latest_date = sorted_group.iloc[-1]["Date"]
-                
-                # Link older row indices to the new target date
                 for idx, row in sorted_group.iloc[:-1].iterrows():
                     reschedule_map[idx] = latest_date
 
-        # 3. Dynamic Row Renderer
         def format_row(row):
             idx = row.name
             status = str(row["Status"]).strip().lower()
             purpose_text = str(row["Purpose"])
             row_date = str(row["Date"])
 
-            # Check if this row is detected as the older part of a reschedule chain
             if idx in reschedule_map:
                 target_date = reschedule_map[idx]
                 return {
@@ -427,7 +434,6 @@ if not df_bookings.empty:
                     "Status/Notes": f"🔄 Rescheduled to {target_date}"
                 }
 
-            # Check if explicit text label exists
             if "[RESCHED_TO:" in purpose_text:
                 target_date = purpose_text.split("[RESCHED_TO:")[1].replace("]", "").strip()
                 try:
@@ -445,7 +451,6 @@ if not df_bookings.empty:
                     "Status/Notes": f"🔄 Rescheduled to {target_date}"
                 }
 
-            # Handle general cancellations
             if status == "cancelled":
                 return {
                     "Date": f"~~{row_date}~~", 
@@ -456,7 +461,6 @@ if not df_bookings.empty:
                     "Status/Notes": "❌ Cancelled & Now Open"
                 }
                 
-            # Default active row display
             return {
                 "Date": row_date, 
                 "Time Slot": row["Time Slot"], 
@@ -467,11 +471,8 @@ if not df_bookings.empty:
             }
                 
         formatted_data = display_board.apply(format_row, axis=1, result_type="expand")
-        
-        # Sort rows so they appear sequentially by date
         formatted_data = formatted_data.sort_values(by="Date")
         
-        # Display the clear, structured table view
         st.dataframe(
             formatted_data[["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status/Notes"]], 
             use_container_width=True, 
