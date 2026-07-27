@@ -288,7 +288,8 @@ with tab2:
 
 # ==========================================
 # TAB 3: RESCHEDULE SYSTEM
-# ==========================================with tab3:
+# ==========================================
+with tab3:
     st.subheader("Reschedule an Existing Booking")
     if not df_bookings.empty and "Status" in df_bookings.columns:
         resched_list = df_bookings[df_bookings["Status"].str.lower() == "confirmed"].copy()
