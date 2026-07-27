@@ -73,7 +73,7 @@ tab1, tab2, tab3 = st.tabs(["📝 Reserve a Room", "❌ Cancel a Booking", "🔄
 # Get current date info for filtering out past dates
 today_obj = datetime.today()
 
-# --- ADJUSTMENT 1: SMART FORMAT PARSING FOR MIXED DATE INPUTS ---
+# --- SMART FORMAT PARSING FOR MIXED DATE INPUTS ---
 def is_past_date(date_string):
     try:
         clean_date = date_string.replace("-", "/")
@@ -109,6 +109,18 @@ def get_active_validations_df(df):
             older_indices = sorted_group.iloc[:-1].index.tolist()
             reschedule_indices.extend(older_indices)
     return check_board.drop(index=reschedule_indices)
+
+# Helper to remove corrupt/incomplete/nan rows from selectbox sources
+def filter_valid_bookings(df):
+    if df.empty:
+        return df
+    valid_mask = (
+        df["Date"].notna() & (df["Date"].str.lower() != "nan") & (df["Date"].str.strip() != "") &
+        df["Time Slot"].notna() & (df["Time Slot"].str.lower() != "nan") & (df["Time Slot"].str.strip() != "") &
+        df["Room"].notna() & (df["Room"].str.lower() != "nan") & (df["Room"].str.strip() != "") &
+        df["Booked By"].notna() & (df["Booked By"].str.lower() != "nan") & (df["Booked By"].str.strip() != "")
+    )
+    return df[valid_mask].copy()
 
 # ==========================================
 # TAB 1: VISUAL GRID TIMELINE INTERFACE
@@ -258,12 +270,13 @@ with tab1:
             st.warning("Please fill out all identity fields.")
 
 # ==========================================
-# TAB 2: CANCELLATION SYSTEM
+# TAB 2: CANCELLATION SYSTEM (CLEANED)
 # ==========================================
 with tab2:
     st.subheader("Cancel an Existing Reservation")
     if not df_bookings.empty and "Status" in df_bookings.columns:
         active_list = df_bookings[df_bookings["Status"].str.lower() == "confirmed"].copy()
+        active_list = filter_valid_bookings(active_list)  # Filter out corrupt/nan rows
         active_list = active_list[~active_list["Date"].apply(is_past_date)]
         
         if not active_list.empty:
@@ -286,12 +299,13 @@ with tab2:
         else: st.info("No active upcoming bookings to release.")
 
 # ==========================================
-# TAB 3: RESCHEDULE SYSTEM (WITH SAFE LOOKUP)
+# TAB 3: RESCHEDULE SYSTEM (CLEANED + SAFE LOOKUP)
 # ==========================================
 with tab3:
     st.subheader("Reschedule an Existing Booking")
     if not df_bookings.empty and "Status" in df_bookings.columns:
         resched_list = df_bookings[df_bookings["Status"].str.lower() == "confirmed"].copy()
+        resched_list = filter_valid_bookings(resched_list)  # Filter out corrupt/nan rows
         resched_list = resched_list[~resched_list["Date"].apply(is_past_date)]
         
         if not resched_list.empty:
@@ -300,7 +314,6 @@ with tab3:
             
             selected_meeting_text = st.selectbox("1. Choose Meeting to Change:", options, key="resched_select")
             
-            # --- SAFE LOOKUP TO PREVENT INDEXERROR ---
             matched_rows = resched_list[resched_list["Display_Text"] == selected_meeting_text]
             
             if not matched_rows.empty:
@@ -395,7 +408,6 @@ st.subheader("📋 Active Schedule Table Feed")
 if not df_bookings.empty:
     display_board = df_bookings.copy()
     
-    # 1. Standardize all dates to YYYY-MM-DD object format safely
     def normalize_to_date_obj(d):
         d_str = str(d).strip()
         for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y"):
@@ -405,41 +417,30 @@ if not df_bookings.empty:
                 continue
         return None
 
-    # Apply strict conversion to a temporary parsing column
     display_board["_parsed_date"] = display_board["Date"].apply(normalize_to_date_obj)
-    
-    # Drop rows where parsing failed or dates that are explicitly in the past
     today = datetime.now().date()
     display_board = display_board.dropna(subset=["_parsed_date"])
     display_board = display_board[display_board["_parsed_date"] >= today]
-    
-    # Rewrite the 'Date' column to be uniformly displayable as YYYY-MM-DD string
     display_board["Date"] = display_board["_parsed_date"].astype(str)
 
     if not display_board.empty:
-        # 2. SMART TRACKING: Match rescheduled entries within upcoming dates
         match_cols = ["Time Slot", "Room", "Booked By", "Purpose"]
         reschedule_map = {}
         
-        # Find active duplicate groups within current/future dates
         grouped = display_board[display_board["Status"].str.lower() == "confirmed"].groupby(match_cols)
         for specs, group in grouped:
             if len(group) > 1:
                 sorted_group = group.sort_values("Date")
                 latest_date = sorted_group.iloc[-1]["Date"]
-                
-                # Link older row indices to the new target date
                 for idx, row in sorted_group.iloc[:-1].iterrows():
                     reschedule_map[idx] = latest_date
 
-        # 3. Dynamic Row Renderer
         def format_row(row):
             idx = row.name
             status = str(row["Status"]).strip().lower()
             purpose_text = str(row["Purpose"])
             row_date = str(row["Date"])
 
-            # Check if this row is detected as the older part of a reschedule chain
             if idx in reschedule_map:
                 target_date = reschedule_map[idx]
                 return {
@@ -451,7 +452,6 @@ if not df_bookings.empty:
                     "Status/Notes": f"🔄 Rescheduled to {target_date}"
                 }
 
-            # Check if explicit text label exists
             if "[RESCHED_TO:" in purpose_text:
                 target_date = purpose_text.split("[RESCHED_TO:")[1].replace("]", "").strip()
                 try:
@@ -469,7 +469,6 @@ if not df_bookings.empty:
                     "Status/Notes": f"🔄 Rescheduled to {target_date}"
                 }
 
-            # Handle general cancellations
             if status == "cancelled":
                 return {
                     "Date": f"~~{row_date}~~", 
@@ -480,7 +479,6 @@ if not df_bookings.empty:
                     "Status/Notes": "❌ Cancelled & Now Open"
                 }
                 
-            # Default active row display
             return {
                 "Date": row_date, 
                 "Time Slot": row["Time Slot"], 
@@ -491,11 +489,8 @@ if not df_bookings.empty:
             }
                 
         formatted_data = display_board.apply(format_row, axis=1, result_type="expand")
-        
-        # Sort rows so they appear sequentially by date
         formatted_data = formatted_data.sort_values(by="Date")
         
-        # Display the clear, structured table view
         st.dataframe(
             formatted_data[["Date", "Time Slot", "Room", "Booked By", "Purpose", "Status/Notes"]], 
             use_container_width=True, 
