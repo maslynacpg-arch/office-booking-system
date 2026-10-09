@@ -139,9 +139,12 @@ with tab1:
     # Ensure user has selected both start and end dates
     if isinstance(selected_dates, tuple) and len(selected_dates) == 2:
         start_date_obj, end_date_obj = selected_dates
+    elif isinstance(selected_dates, tuple) and len(selected_dates) == 1:
+        start_date_obj = selected_dates[0]
+        end_date_obj = selected_dates[0]
     else:
-        st.warning("Please select both a Start Date and an End Date from the calendar.")
-        st.stop()
+        start_date_obj = datetime.today()
+        end_date_obj = datetime.today()
 
     # Generate list of dates within the selected range
     date_range_list = pd.date_range(start=start_date_obj, end=end_date_obj).strftime("%d/%m/%Y").tolist()
@@ -181,4 +184,46 @@ with tab1:
                         
                         if s_idx <= target_idx < e_idx:
                             is_slot_taken = True
-                            booked_by_name
+                            booked_by_name = b_row['Booked By']
+                            break
+                    except Exception:
+                        continue
+            
+            if is_slot_taken:
+                bg_color = "#FCA5A5"
+                text_color = "#991B1B"
+                border_color = "#EF4444"
+                title_desc = f"Booked by {booked_by_name}"
+                status_text = f"✕ {t_slot}"
+            else:
+                bg_color = "#A7F3D0"
+                text_color = "#065F46"
+                border_color = "#10B981"
+                title_desc = "Available for selection"
+                status_text = t_slot
+                
+            html_content += f"""
+            <div title="{title_desc}" style="
+                flex: 1; min-width: 85px; text-align: center; padding: 10px 4px;
+                border-radius: 6px; font-size: 12px; font-weight: 600;
+                background-color: {bg_color}; color: {text_color}; border: 1px solid {border_color};
+                box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            ">
+                {status_text}
+            </div>
+            """
+            
+        html_content += "</div></div>"
+        st.html(html_content)
+
+    st.markdown("---")
+    st.subheader("2. Input Custom Booking Details")
+    selected_room = st.radio("Choose Room Target:", rooms, key="book_room")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        start_time = st.selectbox("Select Start Time:", time_options, index=2, key="start_book")
+    with col2:
+        end_time = st.selectbox("Select End Time:", time_options, index=4, key="end_book")
+
+    custom_time
